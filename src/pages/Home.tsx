@@ -227,6 +227,7 @@ function BudgetCard({
   currency,
   totalUsedPercent,
   monthlyAllowance,
+  usedSpendingCategories,
 }: {
   category: UiCategory
   delay?: number
@@ -235,6 +236,7 @@ function BudgetCard({
   currency: string
   totalUsedPercent: number
   monthlyAllowance: number
+  usedSpendingCategories: Set<SpendingCategory>
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -292,9 +294,12 @@ function BudgetCard({
   }
 
   const toggleSpendingCategory = (cat: SpendingCategory) => {
-    setEditSpendingCategories(prev => 
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-    )
+    // Can always deselect, but can only select if not used by another category
+    if (editSpendingCategories.includes(cat)) {
+      setEditSpendingCategories(prev => prev.filter(c => c !== cat))
+    } else if (!usedSpendingCategories.has(cat)) {
+      setEditSpendingCategories(prev => [...prev, cat])
+    }
   }
 
   return (
@@ -397,20 +402,28 @@ function BudgetCard({
           <div className="mb-3 flex-1">
             <label className="block text-xs font-medium text-content-primary mb-2">Spending Categories</label>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-              {SPENDING_CATEGORIES.map((cat) => (
-                <button
-                  key={cat.value}
-                  type="button"
-                  onClick={() => toggleSpendingCategory(cat.value)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                    editSpendingCategories.includes(cat.value)
-                      ? 'bg-interactive-primary text-white'
-                      : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
+              {SPENDING_CATEGORIES.map((cat) => {
+                const isSelected = editSpendingCategories.includes(cat.value)
+                const isDisabled = !isSelected && usedSpendingCategories.has(cat.value)
+                return (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => toggleSpendingCategory(cat.value)}
+                    disabled={isDisabled}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      isSelected
+                        ? 'bg-interactive-primary text-white'
+                        : isDisabled
+                        ? 'bg-bg-neutral text-content-tertiary opacity-50 cursor-not-allowed'
+                        : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
+                    }`}
+                    title={isDisabled ? 'Already assigned to another budget category' : ''}
+                  >
+                    {cat.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
           <div className="flex gap-2 mt-auto pt-2">
@@ -505,12 +518,14 @@ function AddCategoryCard({
   currency,
   availablePercent,
   monthlyAllowance,
+  usedSpendingCategories,
 }: {
   delay?: number
   onAdd: (name: string, percent: number, spendingCategories: SpendingCategory[]) => Promise<void>
   currency: string
   availablePercent: number
   monthlyAllowance: number
+  usedSpendingCategories: Set<SpendingCategory>
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState('')
@@ -542,9 +557,12 @@ function AddCategoryCard({
   }
 
   const toggleSpendingCategory = (cat: SpendingCategory) => {
-    setSpendingCategories(prev => 
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-    )
+    // Can always deselect, but can only select if not used by another category
+    if (spendingCategories.includes(cat)) {
+      setSpendingCategories(prev => prev.filter(c => c !== cat))
+    } else if (!usedSpendingCategories.has(cat)) {
+      setSpendingCategories(prev => [...prev, cat])
+    }
   }
 
   return (
@@ -620,20 +638,28 @@ function AddCategoryCard({
           <div className="mb-3 flex-1">
             <label className="block text-sm font-medium text-content-primary mb-2">Spending Categories</label>
             <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-              {SPENDING_CATEGORIES.map((cat) => (
-                <button
-                  key={cat.value}
-                  type="button"
-                  onClick={() => toggleSpendingCategory(cat.value)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                    spendingCategories.includes(cat.value)
-                      ? 'bg-interactive-primary text-white'
-                      : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
+              {SPENDING_CATEGORIES.map((cat) => {
+                const isSelected = spendingCategories.includes(cat.value)
+                const isDisabled = !isSelected && usedSpendingCategories.has(cat.value)
+                return (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => toggleSpendingCategory(cat.value)}
+                    disabled={isDisabled}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      isSelected
+                        ? 'bg-interactive-primary text-white'
+                        : isDisabled
+                        ? 'bg-bg-neutral text-content-tertiary opacity-50 cursor-not-allowed'
+                        : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
+                    }`}
+                    title={isDisabled ? 'Already assigned to another budget category' : ''}
+                  >
+                    {cat.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -707,6 +733,17 @@ export default function HomePage() {
   // Calculate total used percentage across all categories
   const totalUsedPercent = categories.reduce((sum, cat) => sum + (cat.percent ?? 0), 0)
   const availablePercent = Math.max(100 - totalUsedPercent, 0)
+  
+  // Get all spending categories used by other budget categories
+  const getUsedSpendingCategories = (excludeCategoryId?: string): Set<SpendingCategory> => {
+    const used = new Set<SpendingCategory>()
+    categories.forEach(cat => {
+      if (cat.id !== excludeCategoryId && cat.spendingCategories) {
+        cat.spendingCategories.forEach(sc => used.add(sc))
+      }
+    })
+    return used
+  }
 
   const topStats = useMemo(() => {
     if (!summary) return []
@@ -878,6 +915,7 @@ export default function HomePage() {
                 onEdit={handleEditCategory}
                 totalUsedPercent={totalUsedPercent}
                 monthlyAllowance={monthlyAllowance}
+                usedSpendingCategories={getUsedSpendingCategories(category.id)}
               />
             ))}
             <AddCategoryCard 
@@ -886,6 +924,7 @@ export default function HomePage() {
               currency={currency}
               availablePercent={availablePercent}
               monthlyAllowance={monthlyAllowance}
+              usedSpendingCategories={getUsedSpendingCategories()}
             />
           </div>
         </section>

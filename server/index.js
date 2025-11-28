@@ -97,6 +97,19 @@ app.post('/categories', (req, res) => {
     return res.status(400).json({ error: 'Percentage categories cannot exceed 100% in total.' });
   }
 
+  // Check for spending category conflicts
+  if (category.spendingCategories) {
+    const conflicts = checkSpendingCategoryConflicts(category.spendingCategories, null);
+    if (conflicts) {
+      const conflictList = conflicts.map(c => 
+        `"${c.spendingCategory}" is already assigned to "${c.budgetCategoryName}"`
+      ).join(', ');
+      return res.status(400).json({ 
+        error: `Spending category conflict: ${conflictList}. Each spending category can only be assigned to one budget category.` 
+      });
+    }
+  }
+
   const nextCategory = { ...category, id: generateId(category.name) };
   const nextCategories = [...store.categories, nextCategory];
 
@@ -124,6 +137,19 @@ app.put('/categories/:id', (req, res) => {
 
   if (!canSupportPercent(category.percent ?? 0, current.id)) {
     return res.status(400).json({ error: 'Percentage categories cannot exceed 100% in total.' });
+  }
+
+  // Check for spending category conflicts
+  if (category.spendingCategories) {
+    const conflicts = checkSpendingCategoryConflicts(category.spendingCategories, current.id);
+    if (conflicts) {
+      const conflictList = conflicts.map(c => 
+        `"${c.spendingCategory}" is already assigned to "${c.budgetCategoryName}"`
+      ).join(', ');
+      return res.status(400).json({ 
+        error: `Spending category conflict: ${conflictList}. Each spending category can only be assigned to one budget category.` 
+      });
+    }
   }
 
   const updatedCategory = { ...current, ...category };
@@ -305,11 +331,13 @@ function parseCategory(payload, fallback = {}) {
     category.percent = roundMoney(percent);
   }
 
-  // Handle spending categories
+  // Handle spending categories - always set it, even if empty array
   if (Array.isArray(payload.spendingCategories)) {
     category.spendingCategories = payload.spendingCategories;
   } else if (fallback.spendingCategories) {
     category.spendingCategories = fallback.spendingCategories;
+  } else {
+    category.spendingCategories = [];
   }
 
   return { category };
@@ -405,6 +433,27 @@ function canSupportPercent(incomingPercent, excludeId) {
     .reduce((total, cat) => total + cat.percent, 0);
 
   return percentSum + (incomingPercent || 0) <= 100;
+}
+
+function checkSpendingCategoryConflicts(newSpendingCategories, excludeId) {
+  if (!Array.isArray(newSpendingCategories)) return null;
+  
+  const conflicts = [];
+  for (const spendingCat of newSpendingCategories) {
+    const existingCategory = store.categories.find(
+      (cat) => cat.id !== excludeId &&
+               cat.spendingCategories &&
+               cat.spendingCategories.includes(spendingCat)
+    );
+    if (existingCategory) {
+      conflicts.push({
+        spendingCategory: spendingCat,
+        budgetCategoryName: existingCategory.name
+      });
+    }
+  }
+  
+  return conflicts.length > 0 ? conflicts : null;
 }
 
 function calculateAllocation(amount, categories, currency = store.currency) {
