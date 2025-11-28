@@ -16,12 +16,10 @@ const store = {
   onboarding: { completed: false, updatedAt: new Date().toISOString() },
   alerts: [],
   categories: [
-    { id: 'rent', name: 'Rent', type: 'fixed', amount: 1500 },
-    { id: 'subscriptions', name: 'Subscriptions', type: 'fixed', amount: 100 },
-    { id: 'savings', name: 'Savings', type: 'percent', percent: 30 },
-    { id: 'wants', name: 'Wants', type: 'percent', percent: 20 },
-    { id: 'needs', name: 'Needs', type: 'percent', percent: 50 },
-    { id: 'groceries', name: 'Groceries', type: 'fixed', amount: 450 }
+    { id: 'essentials', name: 'Essentials', type: 'percent', percent: 50, spendingCategories: ['bills', 'groceries', 'transport'] },
+    { id: 'savings', name: 'Savings', type: 'percent', percent: 20, spendingCategories: ['income'] },
+    { id: 'lifestyle', name: 'Lifestyle', type: 'percent', percent: 20, spendingCategories: ['eating_out', 'entertainment', 'shopping', 'subscriptions'] },
+    { id: 'personal', name: 'Personal', type: 'percent', percent: 10, spendingCategories: ['health', 'education', 'family_and_friends'] }
   ],
   transactions: [],
   lastAllocation: null
@@ -305,6 +303,13 @@ function parseCategory(payload, fallback = {}) {
       return { error: 'A positive numeric "percent" is required for percentage categories.' };
     }
     category.percent = roundMoney(percent);
+  }
+
+  // Handle spending categories
+  if (Array.isArray(payload.spendingCategories)) {
+    category.spendingCategories = payload.spendingCategories;
+  } else if (fallback.spendingCategories) {
+    category.spendingCategories = fallback.spendingCategories;
   }
 
   return { category };

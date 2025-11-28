@@ -21,8 +21,9 @@ import {
   LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { fetchSummary, createCategory, updateCategory, deleteCategory } from '../api'
-import type { Alert as ApiAlert, Category, Summary } from '../types'
+import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck } from '../api'
+import type { Alert as ApiAlert, Category, Summary, SpendingCategory } from '../types'
+import { SPENDING_CATEGORIES } from '../types'
 
 const iconMap: Record<string, LucideIcon> = {
   ShoppingCart,
@@ -122,26 +123,127 @@ function StatCard({
   )
 }
 
+function EditableAllowanceCard({
+  value,
+  currency,
+  onUpdate,
+  delay = 0,
+}: {
+  value: number
+  currency: string
+  onUpdate: (amount: number) => Promise<void>
+  delay?: number
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value.toString())
+  const [pending, setPending] = useState(false)
+
+  const handleSave = async () => {
+    const amount = parseFloat(editValue)
+    if (!isNaN(amount) && amount > 0) {
+      setPending(true)
+      await onUpdate(amount)
+      setPending(false)
+      setIsEditing(false)
+    }
+  }
+
+  const handleCancel = () => {
+    setEditValue(value.toString())
+    setIsEditing(false)
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay, duration: 0.4 }}
+      className="card-elevated p-6 relative"
+    >
+      {!isEditing && (
+        <button
+          onClick={() => setIsEditing(true)}
+          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-bg-neutral transition-colors group"
+        >
+          <Pencil className="w-4 h-4 text-content-tertiary group-hover:text-interactive-primary transition-colors" />
+        </button>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-content-secondary text-sm">Monthly Allowance</span>
+        <div className="w-10 h-10 rounded-xl bg-bg-neutral flex items-center justify-center">
+          <Wallet className="w-5 h-5 text-interactive-primary" />
+        </div>
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-content-tertiary text-lg">{currency === 'USD' ? '$' : currency}</span>
+            <input
+              type="number"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              autoFocus
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
+                focus:border-interactive-primary focus:outline-none text-xl font-semibold text-content-primary"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={pending || !editValue || parseFloat(editValue) <= 0}
+              className="flex-1 py-2 px-3 rounded-full font-semibold text-sm disabled:opacity-50"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
+            >
+              {pending ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={handleCancel}
+              className="flex-1 py-2 px-3 rounded-full font-medium text-sm border border-border-neutral"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-2xl font-semibold text-content-primary mb-1">
+            {formatCurrency(value, currency)}
+          </p>
+          <p className="text-sm text-content-secondary">Your monthly budget</p>
+        </>
+      )}
+    </motion.div>
+  )
+}
+
 function BudgetCard({
   category,
   delay = 0,
   onDelete,
   onEdit,
   currency,
+  totalUsedPercent,
+  monthlyAllowance,
 }: {
   category: UiCategory
   delay?: number
   onDelete: (id: string) => Promise<void>
   onEdit: (category: UiCategory) => Promise<void>
   currency: string
+  totalUsedPercent: number
+  monthlyAllowance: number
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [pending, setPending] = useState(false)
   const [editName, setEditName] = useState(category.name)
-  const [editBudget, setEditBudget] = useState(
-    category.type === 'percent' ? (category.percent ?? '').toString() : category.allocated.toString(),
+  const [editPercent, setEditPercent] = useState((category.percent ?? 0).toString())
+  const [editSpendingCategories, setEditSpendingCategories] = useState<SpendingCategory[]>(
+    category.spendingCategories || []
   )
 
   const Icon = iconMap[category.icon] || CreditCard
@@ -149,6 +251,11 @@ function BudgetCard({
   const percentage = Math.min((category.spent / denominator) * 100, 100)
   const isOverBudget = category.spent > category.allocated
   const remaining = category.allocated - category.spent
+  
+  // Calculate available percent (excluding current category's percent)
+  const availablePercent = 100 - totalUsedPercent + (category.percent ?? 0)
+  const currentEditPercent = parseFloat(editPercent) || 0
+  const isPercentValid = currentEditPercent > 0 && currentEditPercent <= availablePercent
 
   const handleDelete = async () => {
     setPending(true)
@@ -164,13 +271,13 @@ function BudgetCard({
   }
 
   const handleSaveEdit = async () => {
-    if (editName.trim() && editBudget) {
+    if (editName.trim() && isPercentValid) {
       setPending(true)
       await onEdit({
         ...category,
         name: editName.trim(),
-        allocated: Number(editBudget),
-        percent: category.type === 'percent' ? Number(editBudget) : category.percent,
+        percent: currentEditPercent,
+        spendingCategories: editSpendingCategories,
       })
       setPending(false)
       setIsEditing(false)
@@ -179,8 +286,15 @@ function BudgetCard({
 
   const handleCancelEdit = () => {
     setEditName(category.name)
-    setEditBudget(category.type === 'percent' ? (category.percent ?? '').toString() : category.allocated.toString())
+    setEditPercent((category.percent ?? 0).toString())
+    setEditSpendingCategories(category.spendingCategories || [])
     setIsEditing(false)
+  }
+
+  const toggleSpendingCategory = (cat: SpendingCategory) => {
+    setEditSpendingCategories(prev => 
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    )
   }
 
   return (
@@ -245,7 +359,7 @@ function BudgetCard({
       )}
 
       {isEditing && (
-        <div className="absolute inset-0 bg-white rounded-xl p-4 flex flex-col z-10">
+        <div className="absolute inset-0 bg-white rounded-xl p-4 flex flex-col z-10 overflow-y-auto">
           <div className="mb-3">
             <label className="block text-xs font-medium text-content-primary mb-1">Name</label>
             <input
@@ -258,20 +372,51 @@ function BudgetCard({
           </div>
           <div className="mb-3">
             <label className="block text-xs font-medium text-content-primary mb-1">
-              {category.type === 'percent' ? 'Budget (%)' : 'Budget (€)'}
+              Cap (% of allowance) — {availablePercent.toFixed(0)}% available
             </label>
             <input
               type="number"
-              value={editBudget}
-              onChange={(e) => setEditBudget(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
-                focus:border-interactive-primary focus:outline-none text-sm"
+              value={editPercent}
+              onChange={(e) => setEditPercent(e.target.value)}
+              min="1"
+              max={availablePercent}
+              className={`w-full px-3 py-2 rounded-lg border bg-bg-neutral
+                focus:outline-none text-sm ${!isPercentValid && editPercent ? 'border-sentiment-negative' : 'border-border-neutral focus:border-interactive-primary'}`}
             />
+            {!isPercentValid && editPercent && (
+              <p className="text-xs text-sentiment-negative mt-1">
+                {currentEditPercent > availablePercent ? `Max ${availablePercent.toFixed(0)}%` : 'Enter a valid percentage'}
+              </p>
+            )}
+            {monthlyAllowance > 0 && isPercentValid && (
+              <p className="text-xs text-content-tertiary mt-1">
+                ≈ {formatCurrency((currentEditPercent / 100) * monthlyAllowance, currency)}
+              </p>
+            )}
           </div>
-          <div className="flex gap-2 mt-auto">
+          <div className="mb-3 flex-1">
+            <label className="block text-xs font-medium text-content-primary mb-2">Spending Categories</label>
+            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+              {SPENDING_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => toggleSpendingCategory(cat.value)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    editSpendingCategories.includes(cat.value)
+                      ? 'bg-interactive-primary text-white'
+                      : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2 mt-auto pt-2">
             <button
               onClick={handleSaveEdit}
-              disabled={pending}
+              disabled={pending || !isPercentValid || !editName.trim()}
               className="flex-1 py-2 px-3 rounded-full font-semibold text-sm disabled:opacity-50"
               style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
@@ -294,14 +439,34 @@ function BudgetCard({
         >
           <Icon className="w-6 h-6" style={{ color: category.color }} />
         </div>
-        {isOverBudget && (
-          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-sentiment-negative/10 text-sentiment-negative">
-            Over budget
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-1 rounded-full text-xs font-medium bg-bg-neutral text-content-secondary">
+            {category.percent ?? 0}%
           </span>
-        )}
+          {isOverBudget && (
+            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-sentiment-negative/10 text-sentiment-negative">
+              Over budget
+            </span>
+          )}
+        </div>
       </div>
 
       <h3 className="font-semibold text-content-primary mb-1">{category.name}</h3>
+      
+      {category.spendingCategories && category.spendingCategories.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {category.spendingCategories.slice(0, 3).map((cat) => (
+            <span key={cat} className="px-2 py-0.5 rounded text-xs bg-bg-neutral text-content-tertiary">
+              {SPENDING_CATEGORIES.find(c => c.value === cat)?.label || cat}
+            </span>
+          ))}
+          {category.spendingCategories.length > 3 && (
+            <span className="px-2 py-0.5 rounded text-xs bg-bg-neutral text-content-tertiary">
+              +{category.spendingCategories.length - 3}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex items-baseline gap-2 mb-4">
         <span className="text-xl font-bold" style={{ color: isOverBudget ? '#A8200D' : category.color }}>
@@ -338,32 +503,48 @@ function AddCategoryCard({
   delay = 0,
   onAdd,
   currency,
+  availablePercent,
+  monthlyAllowance,
 }: {
   delay?: number
-  onAdd: (name: string, budget: number) => Promise<void>
+  onAdd: (name: string, percent: number, spendingCategories: SpendingCategory[]) => Promise<void>
   currency: string
+  availablePercent: number
+  monthlyAllowance: number
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState('')
-  const [budget, setBudget] = useState('')
+  const [percent, setPercent] = useState('')
+  const [spendingCategories, setSpendingCategories] = useState<SpendingCategory[]>([])
   const [pending, setPending] = useState(false)
+
+  const currentPercent = parseFloat(percent) || 0
+  const isPercentValid = currentPercent > 0 && currentPercent <= availablePercent
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (name.trim() && budget) {
+    if (name.trim() && isPercentValid) {
       setPending(true)
-      await onAdd(name.trim(), Number(budget))
+      await onAdd(name.trim(), currentPercent, spendingCategories)
       setPending(false)
       setName('')
-      setBudget('')
+      setPercent('')
+      setSpendingCategories([])
       setIsEditing(false)
     }
   }
 
   const handleCancel = () => {
     setName('')
-    setBudget('')
+    setPercent('')
+    setSpendingCategories([])
     setIsEditing(false)
+  }
+
+  const toggleSpendingCategory = (cat: SpendingCategory) => {
+    setSpendingCategories(prev => 
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    )
   }
 
   return (
@@ -377,9 +558,10 @@ function AddCategoryCard({
       {!isEditing ? (
         <button
           onClick={() => setIsEditing(true)}
+          disabled={availablePercent <= 0}
           className="w-full h-full flex flex-col items-center justify-center border-2 border-dashed border-border-neutral 
             hover:border-interactive-primary rounded-xl py-8
-            hover:bg-bg-neutral transition-all duration-200 group"
+            hover:bg-bg-neutral transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <div className="w-12 h-12 rounded-xl bg-bg-neutral group-hover:bg-interactive-accent/20 flex items-center justify-center mb-4 transition-colors">
             <Plus className="w-6 h-6 text-content-tertiary group-hover:text-interactive-primary transition-colors" />
@@ -387,16 +569,21 @@ function AddCategoryCard({
           <span className="font-semibold text-content-tertiary group-hover:text-interactive-primary transition-colors">
             Add Category
           </span>
+          {availablePercent > 0 ? (
+            <span className="text-xs text-content-tertiary mt-1">{availablePercent.toFixed(0)}% available</span>
+          ) : (
+            <span className="text-xs text-sentiment-negative mt-1">100% allocated</span>
+          )}
         </button>
       ) : (
         <form onSubmit={handleSubmit} className="h-full flex flex-col">
-          <div className="mb-4">
+          <div className="mb-3">
             <label className="block text-sm font-medium text-content-primary mb-2">Category Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Subscriptions"
+              placeholder="e.g., Savings"
               autoFocus
               className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
                 focus:border-interactive-primary focus:outline-none
@@ -404,24 +591,56 @@ function AddCategoryCard({
             />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-primary mb-2">Monthly Budget ({currency})</label>
+          <div className="mb-3">
+            <label className="block text-sm font-medium text-content-primary mb-2">
+              Cap (% of allowance) — {availablePercent.toFixed(0)}% for savings
+            </label>
             <input
               type="number"
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              placeholder="100"
-              min="0"
-              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
-                focus:border-interactive-primary focus:outline-none
-                text-content-primary placeholder:text-content-tertiary text-sm transition-all"
+              value={percent}
+              onChange={(e) => setPercent(e.target.value)}
+              placeholder="e.g., 20"
+              min="1"
+              max={availablePercent}
+              className={`w-full px-3 py-2 rounded-lg border bg-bg-neutral
+                focus:outline-none text-sm ${!isPercentValid && percent ? 'border-sentiment-negative' : 'border-border-neutral focus:border-interactive-primary'}`}
             />
+            {!isPercentValid && percent && (
+              <p className="text-xs text-sentiment-negative mt-1">
+                {currentPercent > availablePercent ? `Max ${availablePercent.toFixed(0)}%` : 'Enter a valid percentage'}
+              </p>
+            )}
+            {monthlyAllowance > 0 && isPercentValid && (
+              <p className="text-xs text-content-tertiary mt-1">
+                ≈ {formatCurrency((currentPercent / 100) * monthlyAllowance, currency)}
+              </p>
+            )}
           </div>
 
-          <div className="flex flex-row gap-2 mt-4 pt-2">
+          <div className="mb-3 flex-1">
+            <label className="block text-sm font-medium text-content-primary mb-2">Spending Categories</label>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              {SPENDING_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => toggleSpendingCategory(cat.value)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    spendingCategories.includes(cat.value)
+                      ? 'bg-interactive-primary text-white'
+                      : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-row gap-2 mt-auto pt-2">
             <button
               type="submit"
-              disabled={!name.trim() || !budget || pending}
+              disabled={!name.trim() || !isPercentValid || pending}
               className="flex-1 py-2.5 px-4 rounded-full font-semibold text-sm transition-colors
                 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#9FE870', color: '#163300' }}
@@ -481,36 +700,18 @@ export default function HomePage() {
   const currency = summary?.currency || 'USD'
   const alertCount = alerts.filter((a) => a.type === 'danger' || a.type === 'warning').length
 
+  const monthlyAllowance = summary?.paycheck?.amount || 0
+  const allowanceSpent = summary?.spentTotal || 0
+  const allowanceLeft = Math.max(monthlyAllowance - allowanceSpent, 0)
+  
+  // Calculate total used percentage across all categories
+  const totalUsedPercent = categories.reduce((sum, cat) => sum + (cat.percent ?? 0), 0)
+  const availablePercent = Math.max(100 - totalUsedPercent, 0)
+
   const topStats = useMemo(() => {
     if (!summary) return []
-    const remaining = Math.max(summary.allocatedTotal - summary.spentTotal, 0)
-    const balance = summary.paycheck?.amount || 0
-    const updated = summary.paycheck?.updatedAt
-      ? `Updated ${new Date(summary.paycheck.updatedAt).toLocaleDateString()}`
-      : 'No paycheck saved'
 
     return [
-      {
-        label: 'Total Balance',
-        value: formatCurrency(balance, currency),
-        change: updated,
-        changeType: 'neutral' as const,
-        icon: Wallet,
-      },
-      {
-        label: 'Monthly Spending',
-        value: formatCurrency(summary.spentTotal, currency),
-        change: `${formatCurrency(remaining, currency)} remaining`,
-        changeType: 'neutral' as const,
-        icon: TrendingUp,
-      },
-      {
-        label: 'Budget Used',
-        value: `${summary.budgetUsedPercent.toFixed(0)}%`,
-        change: summary.budgetUsedPercent > 100 ? 'Over budget' : 'On track',
-        changeType: summary.budgetUsedPercent > 100 ? ('negative' as const) : ('positive' as const),
-        icon: Target,
-      },
       {
         label: 'Alerts',
         value: alertCount.toString(),
@@ -518,8 +719,32 @@ export default function HomePage() {
         changeType: alertCount > 0 ? ('negative' as const) : ('positive' as const),
         icon: AlertTriangle,
       },
+      {
+        label: 'Allowance Left',
+        value: formatCurrency(allowanceLeft, currency),
+        change: allowanceSpent > monthlyAllowance ? 'Over budget' : monthlyAllowance > 0 ? `${((allowanceLeft / monthlyAllowance) * 100).toFixed(0)}% remaining` : '100% remaining',
+        changeType: allowanceSpent > monthlyAllowance ? ('negative' as const) : ('positive' as const),
+        icon: Target,
+      },
+      {
+        label: 'Allowance Spent',
+        value: formatCurrency(allowanceSpent, currency),
+        change: monthlyAllowance > 0 ? `${((allowanceSpent / monthlyAllowance) * 100).toFixed(0)}% of allowance` : '0% of allowance',
+        changeType: monthlyAllowance > 0 && (allowanceSpent / monthlyAllowance) > 0.85 ? ('negative' as const) : ('neutral' as const),
+        icon: TrendingUp,
+      },
     ]
-  }, [alertCount, currency, summary])
+  }, [alertCount, allowanceLeft, allowanceSpent, monthlyAllowance, currency, summary])
+
+  async function handleUpdateAllowance(amount: number) {
+    setError(null)
+    try {
+      await updatePaycheck(amount, currency)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update allowance')
+    }
+  }
 
   useEffect(() => {
     loadData()
@@ -541,10 +766,10 @@ export default function HomePage() {
     }
   }
 
-  async function handleAddCategory(name: string, budget: number) {
+  async function handleAddCategory(name: string, percent: number, spendingCategories: SpendingCategory[]) {
     setError(null)
     try {
-      await createCategory({ name, amount: budget })
+      await createCategory({ name, percent, spendingCategories })
       await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add category')
@@ -564,19 +789,11 @@ export default function HomePage() {
   async function handleEditCategory(updatedCategory: UiCategory) {
     setError(null)
     try {
-      if (updatedCategory.type === 'percent') {
-        await updateCategory(updatedCategory.id, {
-          name: updatedCategory.name,
-          percent: updatedCategory.percent ?? updatedCategory.allocated,
-          type: 'percent',
-        })
-      } else {
-        await updateCategory(updatedCategory.id, {
-          name: updatedCategory.name,
-          amount: updatedCategory.allocated,
-          type: 'fixed',
-        })
-      }
+      await updateCategory(updatedCategory.id, {
+        name: updatedCategory.name,
+        percent: updatedCategory.percent ?? 0,
+        spendingCategories: updatedCategory.spendingCategories,
+      })
       await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update category')
@@ -617,6 +834,12 @@ export default function HomePage() {
           {loading && <div className="text-content-secondary mb-4">Loading...</div>}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <EditableAllowanceCard
+              value={monthlyAllowance}
+              currency={currency}
+              onUpdate={handleUpdateAllowance}
+              delay={0}
+            />
             {topStats.map((stat, index) => (
               <StatCard
                 key={stat.label}
@@ -625,7 +848,7 @@ export default function HomePage() {
                 change={stat.change}
                 changeType={stat.changeType}
                 icon={stat.icon}
-                delay={index * 0.1}
+                delay={(index + 1) * 0.1}
               />
             ))}
           </div>
@@ -640,7 +863,11 @@ export default function HomePage() {
           >
             Budget Categories
           </motion.h2>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4">
+            <div className="flex items-center justify-between px-1 mb-2">
+              <span className="text-sm text-content-secondary">Total allocated: {totalUsedPercent.toFixed(0)}%</span>
+              <span className="text-sm text-content-secondary">{availablePercent.toFixed(0)}% go to savings</span>
+            </div>
             {categories.map((category, index) => (
               <BudgetCard
                 key={category.id}
@@ -649,9 +876,17 @@ export default function HomePage() {
                 currency={currency}
                 onDelete={handleDeleteCategory}
                 onEdit={handleEditCategory}
+                totalUsedPercent={totalUsedPercent}
+                monthlyAllowance={monthlyAllowance}
               />
             ))}
-            <AddCategoryCard delay={categories.length * 0.1} onAdd={handleAddCategory} currency={currency} />
+            <AddCategoryCard 
+              delay={categories.length * 0.1} 
+              onAdd={handleAddCategory} 
+              currency={currency}
+              availablePercent={availablePercent}
+              monthlyAllowance={monthlyAllowance}
+            />
           </div>
         </section>
 
@@ -699,7 +934,7 @@ export default function HomePage() {
       </main>
 
       <footer className="border-t border-border-neutral py-8 mt-16">
-        <p className="text-center text-sm text-content-tertiary">VaultX • Made for Wise Hackathon 2024</p>
+        <p className="text-center text-sm text-content-tertiary">VaultX • Made for Wise Hackathon 2025</p>
       </footer>
     </div>
   )

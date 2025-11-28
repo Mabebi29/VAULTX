@@ -1,5 +1,40 @@
 export type CategoryType = 'fixed' | 'percent'
 
+export type SpendingCategory = 
+  | 'bills'
+  | 'eating_out'
+  | 'education'
+  | 'entertainment'
+  | 'expenses'
+  | 'family_and_friends'
+  | 'general'
+  | 'groceries'
+  | 'health'
+  | 'holiday'
+  | 'income'
+  | 'pets'
+  | 'shopping'
+  | 'subscriptions'
+  | 'transport'
+
+export const SPENDING_CATEGORIES: { value: SpendingCategory; label: string }[] = [
+  { value: 'bills', label: 'Bills' },
+  { value: 'eating_out', label: 'Eating Out' },
+  { value: 'education', label: 'Education' },
+  { value: 'entertainment', label: 'Entertainment' },
+  { value: 'expenses', label: 'Expenses' },
+  { value: 'family_and_friends', label: 'Family & Friends' },
+  { value: 'general', label: 'General' },
+  { value: 'groceries', label: 'Groceries' },
+  { value: 'health', label: 'Health' },
+  { value: 'holiday', label: 'Holiday' },
+  { value: 'income', label: 'Income' },
+  { value: 'pets', label: 'Pets' },
+  { value: 'shopping', label: 'Shopping' },
+  { value: 'subscriptions', label: 'Subscriptions' },
+  { value: 'transport', label: 'Transport' },
+]
+
 export interface Category {
   id: string
   name: string
@@ -9,6 +44,7 @@ export interface Category {
   allocated: number
   spent: number
   remaining: number
+  spendingCategories?: SpendingCategory[]
 }
 
 export interface Alert {
