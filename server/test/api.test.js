@@ -2,7 +2,14 @@ const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { store, resetStore, _internals } = require('../index');
 
-const { calculateAllocation, buildAlerts, categoriesWithUsage, parseCategory, normalizeCategories } = _internals;
+const {
+  calculateAllocation,
+  buildAlerts,
+  categoriesWithUsage,
+  parseCategory,
+  normalizeCategories,
+  percentageTotal
+} = _internals;
 
 beforeEach(() => resetStore());
 
@@ -62,5 +69,54 @@ describe('API core logic', () => {
     const okPercent = parseCategory({ name: 'New', type: 'percent', percent: 15 });
     assert.equal(okPercent.error, undefined);
     assert.equal(okPercent.category.percent, 15);
+  });
+
+  it('computes percentage totals correctly across mixed category types', () => {
+    const categories = normalizeCategories([
+      { name: 'Fixed', type: 'fixed', amount: 100 },
+      { name: 'P1', type: 'percent', percent: 30 },
+      { name: 'P2', type: 'percent', percent: 20 }
+    ]);
+    assert.ok(!Array.isArray(categories) || categories.error === undefined);
+    const total = percentageTotal(categories);
+    assert.equal(total, 50);
+  });
+
+  it('prevents percent allocations over 100 even with fixed categories', () => {
+    const categories = normalizeCategories([
+      { name: 'Fixed', type: 'fixed', amount: 100 },
+      { name: 'P1', type: 'percent', percent: 80 },
+      { name: 'P2', type: 'percent', percent: 30 }
+    ]);
+    const result = calculateAllocation(1000, categories, 'USD');
+    assert.equal(result.error, 'Percentage categories cannot exceed 100%.');
+  });
+
+  it('rejects fixed totals above paycheck amount', () => {
+    const categories = normalizeCategories([
+      { name: 'Rent', type: 'fixed', amount: 2000 }
+    ]);
+    const result = calculateAllocation(1000, categories, 'USD');
+    assert.equal(result.error, 'Fixed amounts exceed the paycheck amount.');
+  });
+
+  it('supports allocate preview without stored categories', () => {
+    const previewCategories = normalizeCategories([
+      { name: 'Rent', type: 'fixed', amount: 1000 },
+      { name: 'Savings', type: 'percent', percent: 50 }
+    ]);
+    const result = calculateAllocation(2000, previewCategories, 'USD');
+    assert.equal(result.error, undefined);
+    assert.equal(result.fixedTotal, 1000);
+    assert.equal(result.remainingAfterFixed, 1000);
+    const savings = result.allocations.find((a) => a.name === 'Savings');
+    assert.equal(savings.allocated, 500);
+  });
+
+  it('builds no alerts when under budget', () => {
+    store.transactions.push({ id: 't3', categoryId: 'essentials', amount: 10, currency: 'USD' });
+    const alerts = buildAlerts();
+    const match = alerts.find((a) => a.categoryId === 'essentials');
+    assert.equal(match, undefined);
   });
 });

@@ -572,6 +572,7 @@ module.exports = {
     categoriesWithUsage,
     buildAlerts,
     parseCategory,
-    normalizeCategories
+    normalizeCategories,
+    percentageTotal
   }
 };
