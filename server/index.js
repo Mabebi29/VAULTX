@@ -4,6 +4,7 @@ const morgan = require('morgan');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const ALERT_THRESHOLDS = { nearRatio: 0.85 };
 
 app.use(cors());
 app.use(express.json());
@@ -13,6 +14,7 @@ const store = {
   currency: 'USD',
   paycheck: { amount: 3000, currency: 'USD', updatedAt: new Date().toISOString() },
   onboarding: { completed: false, updatedAt: new Date().toISOString() },
+  alerts: [],
   categories: [
     { id: 'rent', name: 'Rent', type: 'fixed', amount: 1500 },
     { id: 'subscriptions', name: 'Subscriptions', type: 'fixed', amount: 100 },
@@ -26,6 +28,7 @@ const store = {
 };
 
 store.lastAllocation = initializeAllocation();
+store.alerts = buildAlerts();
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -49,6 +52,19 @@ app.get('/paycheck', (_req, res) => {
   res.json({ paycheck: store.paycheck, allocation: store.lastAllocation });
 });
 
+app.get('/alerts', (_req, res) => {
+  const alerts = buildAlerts();
+  res.json({
+    currency: store.lastAllocation?.currency || store.currency,
+    alerts,
+    counts: alerts.reduce((acc, alert) => {
+      acc[alert.severity] = (acc[alert.severity] || 0) + 1;
+      acc.total = (acc.total || 0) + 1;
+      return acc;
+    }, {})
+  });
+});
+
 app.put('/paycheck', (req, res) => {
   const amount = toNumber(req.body.amount);
   const currency = req.body.currency || store.currency;
@@ -60,6 +76,7 @@ app.put('/paycheck', (req, res) => {
 
   store.paycheck = { amount: allocation.grossIncome, currency, updatedAt: new Date().toISOString() };
   store.lastAllocation = { ...allocation, categories: store.categories };
+  store.alerts = buildAlerts();
 
   res.json({ paycheck: store.paycheck, allocation: store.lastAllocation });
 });
@@ -91,6 +108,7 @@ app.post('/categories', (req, res) => {
   }
 
   store.categories = nextCategories;
+  store.alerts = buildAlerts();
   res.status(201).json({ category: nextCategory, allocation: store.lastAllocation });
 });
 
@@ -121,6 +139,7 @@ app.put('/categories/:id', (req, res) => {
   }
 
   store.categories[index] = updatedCategory;
+  store.alerts = buildAlerts();
   res.json({ category: store.categories[index], allocation: store.lastAllocation });
 });
 
@@ -137,6 +156,7 @@ app.delete('/categories/:id', (req, res) => {
   }
 
   store.categories.splice(index, 1);
+  store.alerts = buildAlerts();
   res.status(204).send();
 });
 
@@ -175,6 +195,7 @@ app.post('/transactions', (req, res) => {
   store.transactions.push(transaction);
   const categoryUsage = categoriesWithUsage().find((cat) => cat.id === categoryId);
 
+  store.alerts = buildAlerts();
   res.status(201).json({ transaction, category: categoryUsage });
 });
 
@@ -206,6 +227,7 @@ app.post('/allocate', (req, res) => {
       updatedAt: new Date().toISOString()
     };
     store.lastAllocation = { ...allocation, categories: sourceCategories };
+    store.alerts = buildAlerts();
   }
 
   res.json(allocation);
@@ -220,6 +242,8 @@ app.get('/summary', (_req, res) => {
     categories.reduce((total, cat) => total + (cat.spent || 0), 0)
   );
 
+  const alerts = buildAlerts();
+
   res.json({
     currency: store.lastAllocation?.currency || store.currency,
     paycheck: store.paycheck,
@@ -228,6 +252,7 @@ app.get('/summary', (_req, res) => {
     budgetUsedPercent: allocatedTotal ? roundMoney((spentTotal / allocatedTotal) * 100) : 0,
     leftoverBudget: roundMoney(allocatedTotal - spentTotal),
     unallocated: store.lastAllocation?.leftover ?? 0,
+    alerts,
     categories
   });
 });
@@ -324,6 +349,49 @@ function spendByCategory() {
     acc[txn.categoryId] = roundMoney((acc[txn.categoryId] || 0) + txn.amount);
     return acc;
   }, {});
+}
+
+function buildAlerts() {
+  const categories = categoriesWithUsage();
+  const currency = store.lastAllocation?.currency || store.currency;
+
+  return categories.flatMap((cat) => {
+    if (!cat.allocated || cat.allocated <= 0) return [];
+
+    const ratio = cat.spent / cat.allocated;
+    if (ratio > 1) {
+      return [makeAlert('over_budget', 'critical', cat, currency, ratio)];
+    }
+    if (ratio >= ALERT_THRESHOLDS.nearRatio) {
+      return [makeAlert('near_budget', 'warning', cat, currency, ratio)];
+    }
+    return [];
+  });
+}
+
+function makeAlert(kind, severity, cat, currency, ratio) {
+  const percentUsed = Math.round(ratio * 100);
+  const overAmount = roundMoney(cat.spent - cat.allocated);
+
+  const message =
+    kind === 'over_budget'
+      ? `${cat.name} is over budget by ${overAmount} ${currency}.`
+      : `${cat.name} is at ${percentUsed}% of its budget.`;
+
+  return {
+    id: `${kind}-${cat.id}`,
+    kind,
+    severity,
+    currency,
+    categoryId: cat.id,
+    categoryName: cat.name,
+    allocated: cat.allocated,
+    spent: cat.spent,
+    remaining: cat.remaining,
+    percentUsed,
+    message,
+    updatedAt: new Date().toISOString()
+  };
 }
 
 function canSupportPercent(incomingPercent, excludeId) {

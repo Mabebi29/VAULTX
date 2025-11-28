@@ -19,6 +19,8 @@ npm start
 - Onboarding:
   - `GET /onboarding` → returns `{ onboarding: { completed: boolean, updatedAt: string } }`.
   - `PUT /onboarding` → set onboarding status. Body: `{ "completed": true }`.
+- Alerts:
+  - `GET /alerts` → budget alerts when a category is near budget (≥85%) or over budget. Response includes per-alert details and severity counts.
 - Categories:
   - `GET /categories` → categories with `allocated`, `spent`, and `remaining` fields.
   - `POST /categories` → add a category. Body: `{ "name": "Rent", "type": "fixed", "amount": 1200 }` or `{ "name": "Savings", "type": "percent", "percent": 25 }`.
