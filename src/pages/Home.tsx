@@ -1356,14 +1356,14 @@ export default function HomePage() {
           {loading && <div className="text-content-secondary mb-4">Loading...</div>}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <EditableAllowanceCard
+              value={monthlyAllowance}
+              currency={currency}
+              onUpdate={handleUpdateAllowance}
+              delay={0}
+            />
             {summary ? (
               <>
-                <EditableAllowanceCard
-                  value={monthlyAllowance}
-                  currency={currency}
-                  onUpdate={handleUpdateAllowance}
-                  delay={0}
-                />
                 {topStats.map((stat, index) => (
                   <StatCard
                     key={stat.label}
@@ -1379,20 +1379,12 @@ export default function HomePage() {
             ) : (
               <>
                 <StatCard 
-                  label="Monthly Allowance" 
-                  value={formatCurrency(monthlyAllowance, currency)} 
-                  change={monthlyAllowance > 0 ? "From onboarding" : "Set up your budget"} 
-                  changeType={monthlyAllowance > 0 ? "positive" : "neutral"} 
-                  icon={Wallet} 
-                  delay={0.1} 
-                />
-                <StatCard 
                   label="Monthly Spending" 
                   value={formatCurrency(allowanceSpent, currency)} 
                   change={formatCurrency(allowanceLeft, currency) + " remaining"} 
                   changeType="neutral" 
                   icon={TrendingUp} 
-                  delay={0.2} 
+                  delay={0.1} 
                 />
                 <StatCard 
                   label="Budget Used" 
@@ -1400,7 +1392,7 @@ export default function HomePage() {
                   change={allowanceSpent > monthlyAllowance ? "Over budget" : "On track"} 
                   changeType={allowanceSpent > monthlyAllowance ? "negative" : "positive"} 
                   icon={Target} 
-                  delay={0.3} 
+                  delay={0.2} 
                 />
                 <StatCard 
                   label="Alerts" 
@@ -1408,7 +1400,7 @@ export default function HomePage() {
                   change={alertCount > 0 ? "Needs attention" : "All good"} 
                   changeType={alertCount > 0 ? "negative" : "positive"} 
                   icon={AlertTriangle} 
-                  delay={0.4} 
+                  delay={0.3} 
                 />
               </>
             )}

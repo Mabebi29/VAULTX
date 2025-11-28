@@ -63,12 +63,8 @@ const currencies = [
 ]
 
 const defaultCategories: BudgetCategory[] = [
-  { id: '1', name: 'Rent', icon: Home, amount: 0, percentage: 0 },
-  { id: '2', name: 'Groceries', icon: ShoppingCart, amount: 0, percentage: 0 },
-  { id: '3', name: 'Savings', icon: PiggyBank, amount: 0, percentage: 0 },
-  { id: '4', name: 'Bills', icon: CreditCard, amount: 0, percentage: 0 },
-  { id: '5', name: 'Entertainment', icon: Gamepad2, amount: 0, percentage: 0 },
-  { id: '6', name: 'Dining', icon: Utensils, amount: 0, percentage: 0 },
+  { id: '1', name: 'Essentials', icon: ShoppingCart, amount: 0, percentage: 0 },
+  { id: '2', name: 'Non-essentials', icon: CreditCard, amount: 0, percentage: 0 },
 ]
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
@@ -98,7 +94,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   useEffect(() => {
     if (paycheckAmount && currentStep === 2) {
       const amount = parseFloat(paycheckAmount) || 0
-      const defaultPercentages = [40, 15, 20, 10, 7.5, 7.5] // Total = 100%
+      const defaultPercentages = [50, 20] // Essentials: 50%, Non-essentials: 20%
       
       setCategories(prevCategories => {
         const defaultCats = prevCategories.filter(cat => !cat.isCustom)
