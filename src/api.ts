@@ -57,3 +57,30 @@ export function addTransaction(payload: { categoryId: string; amount: number; no
     body: JSON.stringify(payload),
   })
 }
+
+export function fetchOnboardingStatus() {
+  return request<{ onboarding: { completed: boolean; updatedAt: string } }>('/onboarding')
+}
+
+export function setOnboardingCompleted(completed: boolean) {
+  return request<{ onboarding: { completed: boolean; updatedAt: string } }>('/onboarding', {
+    method: 'PUT',
+    body: JSON.stringify({ completed }),
+  })
+}
+
+type AllocationCategoryPayload = {
+  id?: string
+  name: string
+  type: 'percent' | 'fixed'
+  amount?: number
+  percent?: number
+  spendingCategories?: SpendingCategory[]
+}
+
+export function saveAllocation(payload: { amount: number; currency?: string; categories: AllocationCategoryPayload[]; save?: boolean }) {
+  return request<unknown>('/allocate', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, save: payload.save ?? true }),
+  })
+}

@@ -20,6 +20,7 @@ import {
   Edit2
 } from 'lucide-react'
 import { SpendingCategory } from '../types'
+import { saveAllocation, setOnboardingCompleted, updatePaycheck } from '../api'
 
 interface OnboardingProps {
   onComplete: () => void
@@ -191,6 +192,36 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         localStorage.removeItem('vaultx_transactions')
         localStorage.removeItem('vaultx_user_financial_data')
       }
+
+      // Sync onboarding to API (non-blocking fallback to local data)
+      const apiCategories = categories
+        .filter(cat => cat.percentage > 0)
+        .map(cat => ({
+          name: cat.name,
+          type: 'percent' as const,
+          percent: cat.percentage,
+          spendingCategories: cat.spendingCategories
+        }))
+      const paycheckValue = parseFloat(paycheckAmount) || 0
+      if (apiCategories.length && paycheckValue > 0) {
+        saveAllocation({
+          amount: paycheckValue,
+          currency: selectedCurrency,
+          categories: apiCategories,
+          save: true
+        }).catch(err => {
+          console.warn('Failed to sync allocation to API', err)
+        })
+      }
+      const markOnboardingComplete = () => setOnboardingCompleted(true).catch(err => {
+        console.warn('Failed to mark onboarding complete via API', err)
+      })
+      const updatePaycheckApi = () =>
+        updatePaycheck(paycheckValue, selectedCurrency).catch(err => {
+          console.warn('Failed to sync paycheck to API', err)
+        })
+      markOnboardingComplete()
+      updatePaycheckApi()
       
       // Save financial data
       const totalAllocated = categories.reduce((sum, cat) => sum + cat.amount, 0)
@@ -255,12 +286,41 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
     
     // Save financial data with defaults
-    localStorage.setItem('vaultx_user_financial_data', JSON.stringify({
-      balance: 0,
-      monthlySpending: 0,
-      budgetRemaining: 0,
-      paycheckAmount: 0
-    }))
+      localStorage.setItem('vaultx_user_financial_data', JSON.stringify({
+        balance: 0,
+        monthlySpending: 0,
+        budgetRemaining: 0,
+        paycheckAmount: 0
+      }))
+    
+    // Sync skip to API
+    const apiCategories = onboardingData.categories
+      .filter(cat => cat.percentage > 0)
+      .map(cat => ({
+        name: cat.name,
+        type: 'percent' as const,
+        percent: cat.percentage,
+        spendingCategories: cat.spendingCategories
+      }))
+    if (apiCategories.length) {
+      saveAllocation({
+        amount: 0,
+        currency: selectedCurrency,
+        categories: apiCategories,
+        save: true
+      }).catch(err => {
+        console.warn('Failed to sync allocation to API (skip)', err)
+      })
+    }
+    const markOnboardingComplete = () => setOnboardingCompleted(true).catch(err => {
+      console.warn('Failed to mark onboarding complete via API (skip)', err)
+    })
+    const updatePaycheckApi = () =>
+      updatePaycheck(0, selectedCurrency).catch(err => {
+        console.warn('Failed to sync paycheck to API (skip)', err)
+      })
+    markOnboardingComplete()
+    updatePaycheckApi()
     
     onComplete()
   }

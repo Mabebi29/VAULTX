@@ -1,4 +1,5 @@
 import { UserPreferences, Transaction, SpendingCategory } from '../types'
+import { setOnboardingCompleted } from '../api'
 
 export interface OnboardingData {
   completed: boolean
@@ -75,8 +76,13 @@ export const getCurrencySymbol = (): string => {
   return symbols[currency] || '€'
 }
 
-// Developer helper: Reset onboarding
-export const resetOnboarding = (): void => {
+// Developer helper: Reset onboarding (also mark server as incomplete)
+export const resetOnboarding = async (): Promise<void> => {
+  try {
+    await setOnboardingCompleted(false)
+  } catch (e) {
+    console.warn('Failed to reset onboarding on API, falling back to local reset', e)
+  }
   localStorage.removeItem('vaultx_onboarding')
   localStorage.removeItem('vaultx_user_preferences')
   localStorage.removeItem('vaultx_user_financial_data')
