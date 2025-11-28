@@ -81,6 +81,7 @@ export const resetOnboarding = (): void => {
   localStorage.removeItem('vaultx_user_preferences')
   localStorage.removeItem('vaultx_user_financial_data')
   localStorage.removeItem('vaultx_transactions')
+  localStorage.removeItem('vaultx_last_currency')
   // Reload the page to show onboarding again
   window.location.reload()
 }
@@ -116,12 +117,16 @@ export const getOnboardingCategories = (): Array<{
     'non-essentials': ['eating_out', 'entertainment', 'shopping', 'subscriptions', 'health', 'education', 'family_and_friends'],
     uncategorized: ['expenses', 'general', 'holiday', 'income', 'pets']
   }
+  const paycheckAmount = onboarding.paycheckAmount || 0
   
   return onboarding.categories.map(cat => {
     const normalizedName = cat.name?.toLowerCase() || ''
     const spendingCategories = cat.spendingCategories
       || defaultSpendingMap[normalizedName]
       || []
+    const allocated = paycheckAmount > 0 && typeof cat.percentage === 'number'
+      ? Math.round((cat.percentage / 100) * paycheckAmount)
+      : cat.amount
 
     const spent = currentCurrency === onboardingCurrency 
       ? transactions
@@ -133,7 +138,7 @@ export const getOnboardingCategories = (): Array<{
       id: cat.id,
       name: cat.name,
       icon: cat.icon || 'CreditCard',
-      allocated: cat.amount,
+      allocated,
       spent: spent,
       color: '#163300', // Default color
       spendingCategories

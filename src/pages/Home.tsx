@@ -1015,22 +1015,29 @@ export default function HomePage() {
         // Using onboarding data - update localStorage
         const onboarding = getOnboardingData()
         if (onboarding) {
+          const updatedCategories = onboarding.categories.map(cat => ({
+            ...cat,
+            amount: ((cat.percentage ?? 0) / 100) * amount
+          }))
           const updatedOnboarding = {
             ...onboarding,
-            paycheckAmount: amount
+            paycheckAmount: amount,
+            categories: updatedCategories
           }
           localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
           
           // Update financial data
-          const totalAllocated = onboarding.categories.reduce((sum, cat) => sum + cat.amount, 0)
+          const totalAllocated = updatedCategories.reduce((sum, cat) => sum + cat.amount, 0)
+          const monthlySpending = calculateMonthlySpending()
           localStorage.setItem('vaultx_user_financial_data', JSON.stringify({
             balance: amount,
-            monthlySpending: userData.monthlySpending,
+            monthlySpending,
             budgetRemaining: amount - totalAllocated,
             paycheckAmount: amount
           }))
           
           loadOnboardingData()
+          window.dispatchEvent(new Event('vaultx-storage-change'))
         }
       }
     } catch (err) {
@@ -1080,14 +1087,17 @@ export default function HomePage() {
           const percent = originalCat?.percentage ?? (onboarding.paycheckAmount > 0 
             ? Math.round((cat.allocated / onboarding.paycheckAmount) * 100)
             : 0)
+          const allocated = onboarding.paycheckAmount > 0 && typeof percent === 'number'
+            ? Math.round((percent / 100) * onboarding.paycheckAmount)
+            : cat.allocated
           
           return {
             id: cat.id,
             name: cat.name,
             type: 'percent' as const,
-            allocated: cat.allocated,
+            allocated,
             spent: cat.spent,
-            remaining: cat.allocated - cat.spent,
+            remaining: allocated - cat.spent,
             percent: percent,
             spendingCategories: cat.spendingCategories || []
           }
