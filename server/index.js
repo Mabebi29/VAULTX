@@ -244,6 +244,10 @@ app.post('/allocate', (req, res) => {
   }
 
   if (req.body.save) {
+    // Persist categories when client provides a set to save
+    if (Array.isArray(sourceCategories)) {
+      store.categories = sourceCategories;
+    }
     store.paycheck = {
       amount: allocation.grossIncome,
       currency: allocation.currency,
