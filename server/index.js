@@ -10,23 +10,35 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
-const store = {
-  currency: 'USD',
-  paycheck: { amount: 3000, currency: 'USD', updatedAt: new Date().toISOString() },
-  onboarding: { completed: false, updatedAt: new Date().toISOString() },
-  alerts: [],
-  categories: [
-    { id: 'essentials', name: 'Essentials', type: 'percent', percent: 50, spendingCategories: ['bills', 'groceries', 'transport'] },
-    { id: 'savings', name: 'Savings', type: 'percent', percent: 20, spendingCategories: ['income'] },
-    { id: 'lifestyle', name: 'Lifestyle', type: 'percent', percent: 20, spendingCategories: ['eating_out', 'entertainment', 'shopping', 'subscriptions'] },
-    { id: 'personal', name: 'Personal', type: 'percent', percent: 10, spendingCategories: ['health', 'education', 'family_and_friends'] }
-  ],
-  transactions: [],
-  lastAllocation: null
-};
+function createInitialStore() {
+  return {
+    currency: 'USD',
+    paycheck: { amount: 3000, currency: 'USD', updatedAt: new Date().toISOString() },
+    onboarding: { completed: false, updatedAt: new Date().toISOString() },
+    alerts: [],
+    categories: [
+      { id: 'essentials', name: 'Essentials', type: 'percent', percent: 50, spendingCategories: ['bills', 'groceries', 'transport'] },
+      { id: 'savings', name: 'Savings', type: 'percent', percent: 20, spendingCategories: ['income'] },
+      { id: 'lifestyle', name: 'Lifestyle', type: 'percent', percent: 20, spendingCategories: ['eating_out', 'entertainment', 'shopping', 'subscriptions'] },
+      { id: 'personal', name: 'Personal', type: 'percent', percent: 10, spendingCategories: ['health', 'education', 'family_and_friends'] }
+    ],
+    transactions: [],
+    lastAllocation: null
+  };
+}
+
+const store = createInitialStore();
 
 store.lastAllocation = initializeAllocation();
 store.alerts = buildAlerts();
+
+function resetStore() {
+  const next = createInitialStore();
+  Object.keys(store).forEach((key) => delete store[key]);
+  Object.assign(store, next);
+  store.lastAllocation = initializeAllocation();
+  store.alerts = buildAlerts();
+}
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -279,10 +291,6 @@ app.get('/summary', (_req, res) => {
     alerts,
     categories
   });
-});
-
-app.listen(PORT, () => {
-  console.log(`WISE.budget backend running on http://localhost:${PORT}`);
 });
 
 function initializeAllocation() {
@@ -548,3 +556,22 @@ function generateId(name) {
   const sanitized = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'cat';
   return `${sanitized}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`WISE.budget backend running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = {
+  app,
+  store,
+  resetStore,
+  _internals: {
+    calculateAllocation,
+    categoriesWithUsage,
+    buildAlerts,
+    parseCategory,
+    normalizeCategories
+  }
+};
