@@ -24,6 +24,21 @@ npm run dev
 npm run build
 ```
 
+## Local Apps (current)
+
+- **Backend** (`server/`): Express in-memory API for categories, paycheck, transactions, alerts.
+  ```bash
+  cd server
+  npm start          # http://localhost:4000
+  ```
+- **Frontend** (`client/`): React + Vite dashboard wired to the backend.
+  ```bash
+  cd client
+  npm install        # skip if node_modules already present
+  npm run dev        # http://localhost:5173
+  ```
+  Set `VITE_API_URL` (defaults to `http://localhost:4000`) to point at the backend.
+
 ## 🛠 Tech Stack
 
 - **React 18** + **TypeScript** — Type-safe component development
@@ -62,15 +77,23 @@ The frontend is designed to connect with a backend that handles:
 - Paycheck detection and splitting
 - Alert rule processing
 
-### API Endpoints (to be implemented)
+### API Endpoints (implemented now)
 
-```typescript
-GET  /api/balance          // Get current balance
-GET  /api/transactions     // Get transaction history
-GET  /api/categories       // Get budget categories
-POST /api/categories       // Update category allocation
-GET  /api/alerts           // Get user alerts
-POST /api/paycheck/split   // Configure paycheck splitting
+```bash
+GET  /health
+GET  /onboarding
+PUT  /onboarding            # { completed: boolean }
+GET  /paycheck
+PUT  /paycheck              # { amount, currency }
+GET  /categories
+POST /categories
+PUT  /categories/:id
+DELETE /categories/:id
+GET  /transactions[?categoryId=]
+POST /transactions          # { categoryId, amount, note? }
+POST /allocate              # { amount, currency?, categories?, save? }
+GET  /alerts
+GET  /summary               # totals + categories + alerts for dashboard
 ```
 
 ## 🎨 Design System
