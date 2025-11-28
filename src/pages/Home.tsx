@@ -49,7 +49,7 @@ type UiAlert = {
 type UiCategory = Category & { icon: string; color: string }
 
 function formatCurrency(value: number, currency: string) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value)
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value)
 }
 
 function formatTime(value: string) {
@@ -127,11 +127,13 @@ function BudgetCard({
   delay = 0,
   onDelete,
   onEdit,
+  currency,
 }: {
   category: UiCategory
   delay?: number
   onDelete: (id: string) => Promise<void>
   onEdit: (category: UiCategory) => Promise<void>
+  currency: string
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -303,9 +305,11 @@ function BudgetCard({
 
       <div className="flex items-baseline gap-2 mb-4">
         <span className="text-xl font-bold" style={{ color: isOverBudget ? '#A8200D' : category.color }}>
-          €{category.spent.toLocaleString()}
+          {formatCurrency(category.spent, currency)}
         </span>
-        <span className="text-content-tertiary text-sm">/ €{category.allocated.toLocaleString()}</span>
+        <span className="text-content-tertiary text-sm">
+          / {formatCurrency(category.allocated, currency)}
+        </span>
       </div>
 
       <div className="h-2 bg-bg-neutral rounded-full overflow-hidden">
@@ -321,16 +325,24 @@ function BudgetCard({
 
       <p className="mt-3 text-sm text-content-secondary">
         {isOverBudget ? (
-          <span className="text-sentiment-negative font-medium">€{Math.abs(remaining).toLocaleString()} over</span>
+          <span className="text-sentiment-negative font-medium">{formatCurrency(Math.abs(remaining), currency)} over</span>
         ) : (
-          <>€{remaining.toLocaleString()} remaining</>
+          <>{formatCurrency(remaining, currency)} remaining</>
         )}
       </p>
     </motion.div>
   )
 }
 
-function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: string, budget: number) => Promise<void> }) {
+function AddCategoryCard({
+  delay = 0,
+  onAdd,
+  currency,
+}: {
+  delay?: number
+  onAdd: (name: string, budget: number) => Promise<void>
+  currency: string
+}) {
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState('')
   const [budget, setBudget] = useState('')
@@ -393,7 +405,7 @@ function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: s
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-content-primary mb-2">Monthly Budget (€)</label>
+            <label className="block text-sm font-medium text-content-primary mb-2">Monthly Budget ({currency})</label>
             <input
               type="number"
               value={budget}
@@ -634,11 +646,12 @@ export default function HomePage() {
                 key={category.id}
                 category={category}
                 delay={index * 0.1}
+                currency={currency}
                 onDelete={handleDeleteCategory}
                 onEdit={handleEditCategory}
               />
             ))}
-            <AddCategoryCard delay={categories.length * 0.1} onAdd={handleAddCategory} />
+            <AddCategoryCard delay={categories.length * 0.1} onAdd={handleAddCategory} currency={currency} />
           </div>
         </section>
 
