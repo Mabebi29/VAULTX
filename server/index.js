@@ -12,6 +12,7 @@ app.use(morgan('dev'));
 const store = {
   currency: 'USD',
   paycheck: { amount: 3000, currency: 'USD', updatedAt: new Date().toISOString() },
+  onboarding: { completed: false, updatedAt: new Date().toISOString() },
   categories: [
     { id: 'rent', name: 'Rent', type: 'fixed', amount: 1500 },
     { id: 'subscriptions', name: 'Subscriptions', type: 'fixed', amount: 100 },
@@ -28,6 +29,20 @@ store.lastAllocation = initializeAllocation();
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/onboarding', (_req, res) => {
+  res.json({ onboarding: store.onboarding });
+});
+
+app.put('/onboarding', (req, res) => {
+  const completed = req.body.completed;
+  if (typeof completed !== 'boolean') {
+    return res.status(400).json({ error: 'completed must be a boolean.' });
+  }
+
+  store.onboarding = { completed, updatedAt: new Date().toISOString() };
+  res.json({ onboarding: store.onboarding });
 });
 
 app.get('/paycheck', (_req, res) => {

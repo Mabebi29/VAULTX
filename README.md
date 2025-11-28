@@ -16,6 +16,9 @@ npm start
 - Paycheck:
   - `GET /paycheck` → see current paycheck + last allocation.
   - `PUT /paycheck` → set/update paycheck and refresh allocation with stored categories. Body: `{ "amount": 3200, "currency": "EUR" }`.
+- Onboarding:
+  - `GET /onboarding` → returns `{ onboarding: { completed: boolean, updatedAt: string } }`.
+  - `PUT /onboarding` → set onboarding status. Body: `{ "completed": true }`.
 - Categories:
   - `GET /categories` → categories with `allocated`, `spent`, and `remaining` fields.
   - `POST /categories` → add a category. Body: `{ "name": "Rent", "type": "fixed", "amount": 1200 }` or `{ "name": "Savings", "type": "percent", "percent": 25 }`.
