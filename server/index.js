@@ -17,9 +17,8 @@ const store = {
   alerts: [],
   categories: [
     { id: 'essentials', name: 'Essentials', type: 'percent', percent: 50, spendingCategories: ['bills', 'groceries', 'transport'] },
-    { id: 'savings', name: 'Savings', type: 'percent', percent: 20, spendingCategories: ['income'] },
-    { id: 'lifestyle', name: 'Lifestyle', type: 'percent', percent: 20, spendingCategories: ['eating_out', 'entertainment', 'shopping', 'subscriptions'] },
-    { id: 'personal', name: 'Personal', type: 'percent', percent: 10, spendingCategories: ['health', 'education', 'family_and_friends'] }
+    { id: 'non-essentials', name: 'Non-essentials', type: 'percent', percent: 20, spendingCategories: ['eating_out', 'entertainment', 'shopping', 'subscriptions', 'health', 'education', 'family_and_friends'] },
+    { id: 'uncategorized', name: 'Uncategorized', type: 'percent', percent: 30, spendingCategories: ['expenses', 'general', 'holiday', 'income', 'pets'] }
   ],
   transactions: [],
   lastAllocation: null
@@ -223,6 +222,18 @@ app.post('/transactions', (req, res) => {
   res.status(201).json({ transaction, category: categoryUsage });
 });
 
+app.delete('/transactions/:id', (req, res) => {
+  const id = req.params.id;
+  const index = store.transactions.findIndex((txn) => txn.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Transaction not found.' });
+  }
+
+  store.transactions.splice(index, 1);
+  store.alerts = buildAlerts();
+  res.status(204).send();
+});
+
 app.post('/allocate', (req, res) => {
   const amount = toNumber(req.body.amount);
 
@@ -245,6 +256,10 @@ app.post('/allocate', (req, res) => {
   }
 
   if (req.body.save) {
+    // Persist categories when client provides a set to save
+    if (Array.isArray(sourceCategories)) {
+      store.categories = sourceCategories;
+    }
     store.paycheck = {
       amount: allocation.grossIncome,
       currency: allocation.currency,

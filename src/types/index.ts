@@ -47,6 +47,26 @@ export interface Category {
   spendingCategories?: SpendingCategory[]
 }
 
+export interface Transaction {
+  id: string
+  category: string
+  amount: number
+  description?: string
+  type: 'income' | 'expense'
+  date: Date
+}
+
+export interface UserPreferences {
+  currency: string
+  language: string
+  notifications: {
+    push: boolean
+    email: boolean
+    budgetAlerts: boolean
+    savingsGoals: boolean
+  }
+}
+
 export interface Alert {
   id: string
   kind: 'near_budget' | 'over_budget'

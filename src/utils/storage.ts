@@ -1,4 +1,5 @@
-import { UserPreferences, Transaction } from '../types'
+import { UserPreferences, Transaction, SpendingCategory } from '../types'
+import { setOnboardingCompleted } from '../api'
 
 export interface OnboardingData {
   completed: boolean
@@ -11,6 +12,7 @@ export interface OnboardingData {
     amount: number
     percentage: number
     isCustom?: boolean
+    spendingCategories?: SpendingCategory[]
   }>
   completedAt: string
 }
@@ -74,12 +76,18 @@ export const getCurrencySymbol = (): string => {
   return symbols[currency] || '€'
 }
 
-// Developer helper: Reset onboarding
-export const resetOnboarding = (): void => {
+// Developer helper: Reset onboarding (also mark server as incomplete)
+export const resetOnboarding = async (): Promise<void> => {
+  try {
+    await setOnboardingCompleted(false)
+  } catch (e) {
+    console.warn('Failed to reset onboarding on API, falling back to local reset', e)
+  }
   localStorage.removeItem('vaultx_onboarding')
   localStorage.removeItem('vaultx_user_preferences')
   localStorage.removeItem('vaultx_user_financial_data')
   localStorage.removeItem('vaultx_transactions')
+  localStorage.removeItem('vaultx_last_currency')
   // Reload the page to show onboarding again
   window.location.reload()
 }
@@ -92,6 +100,7 @@ export const getOnboardingCategories = (): Array<{
   allocated: number
   spent: number
   color: string
+  spendingCategories: SpendingCategory[]
 }> | null => {
   const onboarding = getOnboardingData()
   if (!onboarding || !onboarding.categories) return null
@@ -109,8 +118,22 @@ export const getOnboardingCategories = (): Array<{
   
   // Calculate spent from transactions (only if currency matches)
   const transactions = currentCurrency === onboardingCurrency ? getCurrentMonthTransactions() : []
+  const defaultSpendingMap: Record<string, SpendingCategory[]> = {
+    essentials: ['bills', 'groceries', 'transport'],
+    'non-essentials': ['eating_out', 'entertainment', 'shopping', 'subscriptions', 'health', 'education', 'family_and_friends'],
+    uncategorized: ['expenses', 'general', 'holiday', 'income', 'pets']
+  }
+  const paycheckAmount = onboarding.paycheckAmount || 0
   
   return onboarding.categories.map(cat => {
+    const normalizedName = cat.name?.toLowerCase() || ''
+    const spendingCategories = cat.spendingCategories
+      || defaultSpendingMap[normalizedName]
+      || []
+    const allocated = paycheckAmount > 0 && typeof cat.percentage === 'number'
+      ? Math.round((cat.percentage / 100) * paycheckAmount)
+      : cat.amount
+
     const spent = currentCurrency === onboardingCurrency 
       ? transactions
           .filter(t => t.category === cat.id && t.type === 'expense')
@@ -121,9 +144,10 @@ export const getOnboardingCategories = (): Array<{
       id: cat.id,
       name: cat.name,
       icon: cat.icon || 'CreditCard',
-      allocated: cat.amount,
+      allocated,
       spent: spent,
-      color: '#163300' // Default color
+      color: '#163300', // Default color
+      spendingCategories
     }
   })
 }

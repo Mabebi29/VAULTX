@@ -19,6 +19,8 @@ import {
   X,
   Edit2
 } from 'lucide-react'
+import { SpendingCategory } from '../types'
+import { saveAllocation, setOnboardingCompleted, updatePaycheck } from '../api'
 
 interface OnboardingProps {
   onComplete: () => void
@@ -31,6 +33,7 @@ interface BudgetCategory {
   amount: number
   percentage: number
   isCustom?: boolean
+  spendingCategories: SpendingCategory[]
 }
 
 const currencies = [
@@ -63,8 +66,30 @@ const currencies = [
 ]
 
 const defaultCategories: BudgetCategory[] = [
-  { id: '1', name: 'Essentials', icon: ShoppingCart, amount: 0, percentage: 0 },
-  { id: '2', name: 'Non-essentials', icon: CreditCard, amount: 0, percentage: 0 },
+  { 
+    id: '1', 
+    name: 'Essentials', 
+    icon: ShoppingCart, 
+    amount: 0, 
+    percentage: 0,
+    spendingCategories: ['bills', 'groceries', 'transport']
+  },
+  { 
+    id: '2', 
+    name: 'Non-essentials', 
+    icon: CreditCard, 
+    amount: 0, 
+    percentage: 0,
+    spendingCategories: ['eating_out', 'entertainment', 'shopping', 'subscriptions', 'health', 'education', 'family_and_friends']
+  },
+  { 
+    id: '3', 
+    name: 'Uncategorized', 
+    icon: CreditCard, 
+    amount: 0, 
+    percentage: 0,
+    spendingCategories: ['expenses', 'general', 'holiday', 'income', 'pets']
+  },
 ]
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
@@ -94,7 +119,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   useEffect(() => {
     if (paycheckAmount && currentStep === 2) {
       const amount = parseFloat(paycheckAmount) || 0
-      const defaultPercentages = [50, 20] // Essentials: 50%, Non-essentials: 20%
+      const defaultPercentages = [50, 20, 30] // Essentials: 50%, Non-essentials: 20%, Uncategorized: 30%
       
       setCategories(prevCategories => {
         const defaultCats = prevCategories.filter(cat => !cat.isCustom)
@@ -130,10 +155,22 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           icon: cat.icon.name || 'CreditCard',
           amount: cat.amount,
           percentage: cat.percentage,
-          isCustom: cat.isCustom || false
+          isCustom: cat.isCustom || false,
+          spendingCategories: cat.spendingCategories || []
         })),
         completedAt: new Date().toISOString()
       }
+      const previousPrefsRaw = localStorage.getItem('vaultx_user_preferences')
+      let previousCurrency: string | null = null
+      if (previousPrefsRaw) {
+        try {
+          const parsed = JSON.parse(previousPrefsRaw)
+          previousCurrency = parsed?.currency || null
+        } catch (e) {
+          previousCurrency = null
+        }
+      }
+
       localStorage.setItem('vaultx_onboarding', JSON.stringify(onboardingData))
       localStorage.setItem('vaultx_user_preferences', JSON.stringify({
         currency: selectedCurrency,
@@ -146,20 +183,45 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         }
       }))
       
-      // Clear old transactions when completing onboarding (fresh start)
-      const oldCurrency = localStorage.getItem('vaultx_user_preferences')
-      if (oldCurrency) {
-        try {
-          const oldPrefs = JSON.parse(oldCurrency)
-          if (oldPrefs.currency !== selectedCurrency) {
-            // Currency changed, clear all transactions
-            localStorage.removeItem('vaultx_transactions')
-          }
-        } catch (e) {
-          // If parsing fails, clear transactions to be safe
-          localStorage.removeItem('vaultx_transactions')
-        }
+      // Clear old data when currency changed between sessions
+      if (previousCurrency && previousCurrency !== selectedCurrency) {
+        localStorage.removeItem('vaultx_transactions')
+        localStorage.removeItem('vaultx_user_financial_data')
+      } else if (previousPrefsRaw && !previousCurrency) {
+        // Parsing failed, clear to avoid mismatched currency data
+        localStorage.removeItem('vaultx_transactions')
+        localStorage.removeItem('vaultx_user_financial_data')
       }
+
+      // Sync onboarding to API (non-blocking fallback to local data)
+      const apiCategories = categories
+        .filter(cat => cat.percentage > 0)
+        .map(cat => ({
+          name: cat.name,
+          type: 'percent' as const,
+          percent: cat.percentage,
+          spendingCategories: cat.spendingCategories
+        }))
+      const paycheckValue = parseFloat(paycheckAmount) || 0
+      if (apiCategories.length && paycheckValue > 0) {
+        saveAllocation({
+          amount: paycheckValue,
+          currency: selectedCurrency,
+          categories: apiCategories,
+          save: true
+        }).catch(err => {
+          console.warn('Failed to sync allocation to API', err)
+        })
+      }
+      const markOnboardingComplete = () => setOnboardingCompleted(true).catch(err => {
+        console.warn('Failed to mark onboarding complete via API', err)
+      })
+      const updatePaycheckApi = () =>
+        updatePaycheck(paycheckValue, selectedCurrency).catch(err => {
+          console.warn('Failed to sync paycheck to API', err)
+        })
+      markOnboardingComplete()
+      updatePaycheckApi()
       
       // Save financial data
       const totalAllocated = categories.reduce((sum, cat) => sum + cat.amount, 0)
@@ -186,34 +248,81 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         icon: cat.icon.name || 'CreditCard',
         amount: 0,
         percentage: 0,
-        isCustom: false
+        isCustom: false,
+        spendingCategories: cat.spendingCategories || []
       })),
       completedAt: new Date().toISOString()
     }
+    const previousPrefsRaw = localStorage.getItem('vaultx_user_preferences')
+    let previousCurrency: string | null = null
+    if (previousPrefsRaw) {
+      try {
+        const parsed = JSON.parse(previousPrefsRaw)
+        previousCurrency = parsed?.currency || null
+      } catch (e) {
+        previousCurrency = null
+      }
+    }
+
     localStorage.setItem('vaultx_onboarding', JSON.stringify(onboardingData))
-      localStorage.setItem('vaultx_user_preferences', JSON.stringify({
-        currency: selectedCurrency,
-        language: 'en',
-        notifications: {
-          push: true,
-          email: true,
-          budgetAlerts: true,
-          savingsGoals: true
-        }
-      }))
-      
-      // Clear transactions when skipping (fresh start)
+    localStorage.setItem('vaultx_user_preferences', JSON.stringify({
+      currency: selectedCurrency,
+      language: 'en',
+      notifications: {
+        push: true,
+        email: true,
+        budgetAlerts: true,
+        savingsGoals: true
+      }
+    }))
+    
+    // Clear old data when currency changed or previous prefs were corrupted
+    if ((previousCurrency && previousCurrency !== selectedCurrency) || (previousPrefsRaw && !previousCurrency)) {
       localStorage.removeItem('vaultx_transactions')
-      
-      // Save financial data with defaults
+      localStorage.removeItem('vaultx_user_financial_data')
+    } else {
+      // Fresh start when skipping
+      localStorage.removeItem('vaultx_transactions')
+    }
+    
+    // Save financial data with defaults
       localStorage.setItem('vaultx_user_financial_data', JSON.stringify({
         balance: 0,
         monthlySpending: 0,
         budgetRemaining: 0,
         paycheckAmount: 0
       }))
-      
-      onComplete()
+    
+    // Sync skip to API
+    const apiCategories = onboardingData.categories
+      .filter(cat => cat.percentage > 0)
+      .map(cat => ({
+        name: cat.name,
+        type: 'percent' as const,
+        percent: cat.percentage,
+        spendingCategories: cat.spendingCategories
+      }))
+    if (apiCategories.length) {
+      saveAllocation({
+        amount: 0,
+        currency: selectedCurrency,
+        categories: apiCategories,
+        save: true
+      }).catch(err => {
+        console.warn('Failed to sync allocation to API (skip)', err)
+      })
+    }
+    const markOnboardingComplete = () => setOnboardingCompleted(true).catch(err => {
+      console.warn('Failed to mark onboarding complete via API (skip)', err)
+    })
+    const updatePaycheckApi = () =>
+      updatePaycheck(0, selectedCurrency).catch(err => {
+        console.warn('Failed to sync paycheck to API (skip)', err)
+      })
+    markOnboardingComplete()
+    updatePaycheckApi()
+    
+    onComplete()
   }
 
   const handleAddCategory = () => {
@@ -224,6 +333,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         icon: CreditCard,
         amount: 0,
         percentage: 0,
+        spendingCategories: [],
         isCustom: true
       }
       setCategories([...categories, newCategory])

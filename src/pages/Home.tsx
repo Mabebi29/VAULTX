@@ -24,8 +24,8 @@ import {
   Smile,
   LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck, createTransaction, deleteTransaction as deleteTransactionAPI } from '../api'
+import { useEffect, useMemo, useState, useRef } from 'react'
+import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck, addTransaction as addTransactionAPI, deleteTransaction as deleteTransactionAPI } from '../api'
 import type { Alert as ApiAlert, Category, Summary, SpendingCategory } from '../types'
 import { SPENDING_CATEGORIES } from '../types'
 import { 
@@ -1014,6 +1014,7 @@ export default function HomePage() {
   const [categories, setCategories] = useState<UiCategory[]>([])
   const [alerts, setAlerts] = useState<UiAlert[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
+  const summaryRef = useRef<Summary | null>(null)
   const [showAllAlerts, setShowAllAlerts] = useState(false)
   const [showDevTools, setShowDevTools] = useState(false)
   
@@ -1114,22 +1115,29 @@ export default function HomePage() {
         // Using onboarding data - update localStorage
         const onboarding = getOnboardingData()
         if (onboarding) {
+          const updatedCategories = onboarding.categories.map(cat => ({
+            ...cat,
+            amount: ((cat.percentage ?? 0) / 100) * amount
+          }))
           const updatedOnboarding = {
             ...onboarding,
-            paycheckAmount: amount
+            paycheckAmount: amount,
+            categories: updatedCategories
           }
           localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
           
           // Update financial data
-          const totalAllocated = onboarding.categories.reduce((sum, cat) => sum + cat.amount, 0)
+          const totalAllocated = updatedCategories.reduce((sum, cat) => sum + cat.amount, 0)
+          const monthlySpending = calculateMonthlySpending()
           localStorage.setItem('vaultx_user_financial_data', JSON.stringify({
             balance: amount,
-            monthlySpending: userData.monthlySpending,
+            monthlySpending,
             budgetRemaining: amount - totalAllocated,
             paycheckAmount: amount
           }))
           
           loadOnboardingData()
+          window.dispatchEvent(new Event('vaultx-storage-change'))
         }
       }
     } catch (err) {
@@ -1138,12 +1146,16 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    summaryRef.current = summary
+  }, [summary])
+
+  useEffect(() => {
     loadData()
     
     // Listen for storage changes (when transactions are added/deleted or onboarding is reset)
     const handleStorageChange = () => {
       // Reload data when storage changes
-      if (!summary) {
+      if (!summaryRef.current) {
         // If using onboarding data, reload it
         loadOnboardingData()
       } else {
@@ -1175,16 +1187,19 @@ export default function HomePage() {
           const percent = originalCat?.percentage ?? (onboarding.paycheckAmount > 0 
             ? Math.round((cat.allocated / onboarding.paycheckAmount) * 100)
             : 0)
+          const allocated = onboarding.paycheckAmount > 0 && typeof percent === 'number'
+            ? Math.round((percent / 100) * onboarding.paycheckAmount)
+            : cat.allocated
           
           return {
             id: cat.id,
             name: cat.name,
             type: 'percent' as const,
-            allocated: cat.allocated,
+            allocated,
             spent: cat.spent,
-            remaining: cat.allocated - cat.spent,
+            remaining: allocated - cat.spent,
             percent: percent,
-            spendingCategories: [] // Onboarding categories don't have spending categories assigned yet
+            spendingCategories: cat.spendingCategories || []
           }
         })
         
@@ -1360,63 +1375,62 @@ export default function HomePage() {
 
   // Handle adding transaction (dev only)
   const handleAddTransaction = async (categoryId: string, amount: number, description: string) => {
-    setError(null)
-    try {
-      // Try API first if available
+    if (summary) {
+      // Using API - call the API endpoint
       try {
-        await createTransaction({
-          category: categoryId,
+        await addTransactionAPI({
+          categoryId,
           amount,
-          description,
-          type: 'expense'
+          note: description,
+          currency: currency
         })
-        // Reload data from API
+        // Reload data from API to get updated categories
         await loadData()
-      } catch (apiError) {
-        // If API fails, fall back to localStorage
-        saveTransaction({
-          category: categoryId,
-          amount,
-          description,
-          type: 'expense'
-        })
-        
-        // Recalculate all spending from transactions
-        const updatedCategories = categories.map(cat => {
-          const spent = calculateCategorySpending(cat.id)
-          return {
-            ...cat,
-            spent,
-            remaining: cat.allocated - spent
-          }
-        })
-        setCategories(updatedCategories)
-        
-        const monthlySpending = calculateMonthlySpending()
-        const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
-        const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
-        
-        setUserData(prev => ({
-          ...prev,
-          monthlySpending,
-          budgetRemaining: totalBudget - totalSpent
-        }))
-        
-        // Regenerate alerts
-        const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
-        setAlerts(generatedAlerts.map(alert => ({
-          id: alert.id,
-          type: alert.type,
-          title: alert.title,
-          message: alert.message,
-          time: alert.time
-        })))
-        
-        // Trigger a custom event to update the UI
-        window.dispatchEvent(new Event('vaultx-storage-change'))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add transaction')
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add transaction')
+    } else {
+      // Using onboarding data - save to localStorage
+      saveTransaction({
+        category: categoryId,
+        amount,
+        description,
+        type: 'expense'
+      })
+      
+      // Recalculate all spending from transactions
+      const updatedCategories = categories.map(cat => {
+        const spent = calculateCategorySpending(cat.id)
+        return {
+          ...cat,
+          spent,
+          remaining: cat.allocated - spent
+        }
+      })
+      setCategories(updatedCategories)
+      
+      const monthlySpending = calculateMonthlySpending()
+      const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
+      const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
+      
+      setUserData(prev => ({
+        ...prev,
+        monthlySpending,
+        budgetRemaining: totalBudget - totalSpent
+      }))
+      
+      // Regenerate alerts
+      const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
+      setAlerts(generatedAlerts.map(alert => ({
+        id: alert.id,
+        type: alert.type,
+        title: alert.title,
+        message: alert.message,
+        time: alert.time
+      })))
+      
+      // Trigger a custom event to update the UI
+      window.dispatchEvent(new Event('vaultx-storage-change'))
     }
   }
 

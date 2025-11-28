@@ -51,8 +51,8 @@ export function updatePaycheck(amount: number, currency?: string) {
   })
 }
 
-export function createTransaction(payload: { category: string; amount: number; description: string; type: 'expense' | 'income' }) {
-  return request<{ transaction: { id: string; category: string; amount: number; description: string; type: string; date: string } }>('/transactions', {
+export function addTransaction(payload: { categoryId: string; amount: number; note?: string; currency?: string }) {
+  return request<{ transaction: { id: string; categoryId: string; amount: number; currency: string; note?: string; occurredAt: string }; category: Category }>('/transactions', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
@@ -60,4 +60,31 @@ export function createTransaction(payload: { category: string; amount: number; d
 
 export function deleteTransaction(id: string) {
   return request<void>('/transactions/' + id, { method: 'DELETE' })
+}
+
+export function fetchOnboardingStatus() {
+  return request<{ onboarding: { completed: boolean; updatedAt: string } }>('/onboarding')
+}
+
+export function setOnboardingCompleted(completed: boolean) {
+  return request<{ onboarding: { completed: boolean; updatedAt: string } }>('/onboarding', {
+    method: 'PUT',
+    body: JSON.stringify({ completed }),
+  })
+}
+
+type AllocationCategoryPayload = {
+  id?: string
+  name: string
+  type: 'percent' | 'fixed'
+  amount?: number
+  percent?: number
+  spendingCategories?: SpendingCategory[]
+}
+
+export function saveAllocation(payload: { amount: number; currency?: string; categories: AllocationCategoryPayload[]; save?: boolean }) {
+  return request<unknown>('/allocate', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, save: payload.save ?? true }),
+  })
 }
