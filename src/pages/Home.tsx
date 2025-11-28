@@ -18,12 +18,29 @@ import {
   ChevronDown,
   Pencil,
   Trash2,
+  X,
+  RotateCcw,
   LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck } from '../api'
 import type { Alert as ApiAlert, Category, Summary, SpendingCategory } from '../types'
 import { SPENDING_CATEGORIES } from '../types'
+import { 
+  resetOnboarding, 
+  isDevMode, 
+  getCurrencySymbol,
+  getCurrency,
+  getOnboardingData,
+  getOnboardingCategories,
+  getSavedUserFinancialData,
+  saveTransaction,
+  deleteTransaction,
+  calculateCategorySpending,
+  calculateMonthlySpending,
+  generateAlerts,
+  getCurrentMonthTransactions
+} from '../utils/storage'
 
 const iconMap: Record<string, LucideIcon> = {
   ShoppingCart,
@@ -688,6 +705,186 @@ function AddCategoryCard({
   )
 }
 
+// Dev Tools Modal Component
+function DevToolsModal({ 
+  categories, 
+  currencySymbol, 
+  onAddTransaction, 
+  onClose,
+  onDeleteTransaction
+}: { 
+  categories: Category[]
+  currencySymbol: string
+  onAddTransaction: (categoryId: string, amount: number, description: string) => void
+  onClose: () => void
+  onDeleteTransaction: (transactionId: string) => void
+}) {
+  const [selectedSpendingCategory, setSelectedSpendingCategory] = useState<SpendingCategory>(SPENDING_CATEGORIES[0]?.value || 'general')
+  const [amount, setAmount] = useState('')
+  const [description, setDescription] = useState('')
+  const transactions = getCurrentMonthTransactions()
+
+  // Find the budget category that contains the selected spending category
+  const findBudgetCategoryForSpendingCategory = (spendingCat: SpendingCategory): string | null => {
+    const budgetCategory = categories.find(cat => 
+      cat.spendingCategories && cat.spendingCategories.includes(spendingCat)
+    )
+    return budgetCategory?.id || null
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (selectedSpendingCategory && amount && parseFloat(amount) > 0) {
+      const budgetCategoryId = findBudgetCategoryForSpendingCategory(selectedSpendingCategory)
+      if (budgetCategoryId) {
+        onAddTransaction(budgetCategoryId, parseFloat(amount), description || SPENDING_CATEGORIES.find(c => c.value === selectedSpendingCategory)?.label || 'Transaction')
+        setAmount('')
+        setDescription('')
+      } else {
+        alert(`No budget category found for "${SPENDING_CATEGORIES.find(c => c.value === selectedSpendingCategory)?.label}". Please assign this spending category to a budget category first.`)
+      }
+    }
+  }
+
+  const formatTimeAgo = (date: Date): string => {
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+    
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    return `${diffDays}d ago`
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-content-primary">Dev Tools - Add Transaction</h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-bg-neutral transition-colors"
+          >
+            <X className="w-5 h-5 text-content-tertiary" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-content-primary mb-2">
+              Spending Category
+            </label>
+            <select
+              value={selectedSpendingCategory}
+              onChange={(e) => setSelectedSpendingCategory(e.target.value as SpendingCategory)}
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral focus:border-interactive-primary focus:outline-none text-content-primary"
+            >
+              {SPENDING_CATEGORIES.map(cat => {
+                const budgetCategory = categories.find(c => 
+                  c.spendingCategories && c.spendingCategories.includes(cat.value)
+                )
+                return (
+                  <option key={cat.value} value={cat.value}>
+                    {cat.label} {budgetCategory ? `(${budgetCategory.name})` : '(Not assigned)'}
+                  </option>
+                )
+              })}
+            </select>
+            {!findBudgetCategoryForSpendingCategory(selectedSpendingCategory) && (
+              <p className="text-xs text-sentiment-negative mt-1">
+                This spending category is not assigned to any budget category. Please assign it first.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-content-primary mb-2">
+              Amount ({currencySymbol})
+            </label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+              required
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral focus:border-interactive-primary focus:outline-none text-content-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-content-primary mb-2">
+              Description (optional)
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Transaction description"
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral focus:border-interactive-primary focus:outline-none text-content-primary"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={!findBudgetCategoryForSpendingCategory(selectedSpendingCategory) || !amount || parseFloat(amount) <= 0}
+            className="w-full py-2 px-4 rounded-lg bg-interactive-accent hover:bg-interactive-primary text-interactive-primary font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Add Transaction
+          </button>
+        </form>
+
+        <div className="border-t border-border-neutral pt-4">
+          <h3 className="font-semibold text-content-primary mb-3">Recent Transactions</h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {transactions.length === 0 ? (
+              <p className="text-sm text-content-tertiary text-center py-4">No transactions yet</p>
+            ) : (
+              transactions.slice().reverse().map(t => {
+                const category = categories.find(c => c.id === t.category)
+                // Try to find the spending category from description or use category name
+                const spendingCategoryLabel = SPENDING_CATEGORIES.find(sc => 
+                  sc.label === t.description || 
+                  (category?.spendingCategories && category.spendingCategories.includes(sc.value))
+                )?.label || t.description || category?.name || 'Unknown'
+                return (
+                  <div key={t.id} className="flex items-center justify-between p-3 bg-bg-neutral rounded-lg">
+                    <div>
+                      <p className="font-medium text-content-primary">{spendingCategoryLabel}</p>
+                      {category && (
+                        <p className="text-xs text-content-tertiary">{category.name}</p>
+                      )}
+                      <p className="text-xs text-content-tertiary">{formatTimeAgo(t.date)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-content-primary">{currencySymbol}{t.amount.toLocaleString()}</p>
+                      <button
+                        onClick={() => onDeleteTransaction(t.id)}
+                        className="text-xs text-sentiment-negative hover:underline mt-1"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 function AlertCard({ alert }: { alert: UiAlert }) {
   const config = {
     warning: { icon: AlertTriangle, color: '#0E0F0C', bgColor: 'rgba(237, 200, 67, 0.2)' },
@@ -718,20 +915,54 @@ export default function HomePage() {
   const [alerts, setAlerts] = useState<UiAlert[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [showAllAlerts, setShowAllAlerts] = useState(false)
+  const [showDevTools, setShowDevTools] = useState(false)
+  
+  // Onboarding/localStorage support
+  const currencySymbol = getCurrencySymbol()
+  const financialData = getSavedUserFinancialData()
+  const [userData, setUserData] = useState({
+    name: 'User',
+    balance: financialData.balance,
+    monthlySpending: financialData.monthlySpending,
+    budgetRemaining: financialData.budgetRemaining,
+    paycheckAmount: financialData.paycheckAmount
+  })
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const visibleAlerts = showAllAlerts ? alerts : alerts.slice(0, 2)
   const hasMoreAlerts = alerts.length > 2
-  const currency = summary?.currency || 'USD'
+  
+  // Get currency from summary (API) or onboarding
+  const onboardingData = getOnboardingData()
+  const onboardingCurrency = onboardingData?.currency || getCurrency()
+  const currency = summary?.currency || onboardingCurrency
+  
   const alertCount = alerts.filter((a) => a.type === 'danger' || a.type === 'warning').length
 
-  const monthlyAllowance = summary?.paycheck?.amount || 0
-  const allowanceSpent = summary?.spentTotal || 0
+  // Get monthly allowance from summary (API) or onboarding
+  const monthlyAllowanceFromOnboarding = onboardingData?.paycheckAmount || userData.paycheckAmount || 0
+  const monthlyAllowance = summary?.paycheck?.amount || monthlyAllowanceFromOnboarding
+  
+  // Calculate spent from categories or summary
+  const totalSpentFromCategories = categories.reduce((sum, cat) => sum + cat.spent, 0)
+  const allowanceSpent = summary?.spentTotal || totalSpentFromCategories
   const allowanceLeft = Math.max(monthlyAllowance - allowanceSpent, 0)
   
   // Calculate total used percentage across all categories
-  const totalUsedPercent = categories.reduce((sum, cat) => sum + (cat.percent ?? 0), 0)
+  // If using onboarding, calculate percent from allocated amounts
+  const totalUsedPercent = categories.length > 0
+    ? categories.reduce((sum, cat) => {
+        if (cat.percent !== undefined && cat.percent !== null) {
+          return sum + cat.percent
+        }
+        // Calculate percent from allocated amount if percent not set
+        if (monthlyAllowance > 0) {
+          return sum + Math.round((cat.allocated / monthlyAllowance) * 100)
+        }
+        return sum
+      }, 0)
+    : 0
   const availablePercent = Math.max(100 - totalUsedPercent, 0)
   
   // Get all spending categories used by other budget categories
@@ -746,8 +977,7 @@ export default function HomePage() {
   }
 
   const topStats = useMemo(() => {
-    if (!summary) return []
-
+    // Show stats whether using API or onboarding data
     return [
       {
         label: 'Alerts',
@@ -771,13 +1001,37 @@ export default function HomePage() {
         icon: TrendingUp,
       },
     ]
-  }, [alertCount, allowanceLeft, allowanceSpent, monthlyAllowance, currency, summary])
+  }, [alertCount, allowanceLeft, allowanceSpent, monthlyAllowance, currency])
 
   async function handleUpdateAllowance(amount: number) {
     setError(null)
     try {
-      await updatePaycheck(amount, currency)
-      await loadData()
+      if (summary) {
+        // Using API
+        await updatePaycheck(amount, currency)
+        await loadData()
+      } else {
+        // Using onboarding data - update localStorage
+        const onboarding = getOnboardingData()
+        if (onboarding) {
+          const updatedOnboarding = {
+            ...onboarding,
+            paycheckAmount: amount
+          }
+          localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
+          
+          // Update financial data
+          const totalAllocated = onboarding.categories.reduce((sum, cat) => sum + cat.amount, 0)
+          localStorage.setItem('vaultx_user_financial_data', JSON.stringify({
+            balance: amount,
+            monthlySpending: userData.monthlySpending,
+            budgetRemaining: amount - totalAllocated,
+            paycheckAmount: amount
+          }))
+          
+          loadOnboardingData()
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update allowance')
     }
@@ -785,19 +1039,105 @@ export default function HomePage() {
 
   useEffect(() => {
     loadData()
+    
+    // Listen for storage changes (when transactions are added/deleted or onboarding is reset)
+    const handleStorageChange = () => {
+      // Reload data when storage changes
+      if (!summary) {
+        // If using onboarding data, reload it
+        loadOnboardingData()
+      } else {
+        loadData()
+      }
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    // Also listen for custom storage events (same-tab updates)
+    window.addEventListener('vaultx-storage-change', handleStorageChange)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('vaultx-storage-change', handleStorageChange)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Helper function to load onboarding data
+  function loadOnboardingData() {
+    const onboarding = getOnboardingData()
+    if (onboarding && onboarding.completed) {
+      // Convert onboarding categories to Category format
+      const onboardingCats = getOnboardingCategories()
+      if (onboardingCats && onboardingCats.length > 0) {
+        const convertedCategories: Category[] = onboardingCats.map((cat) => {
+          // Find the original category data to get percentage
+          const originalCat = onboarding.categories.find(c => c.id === cat.id)
+          const percent = originalCat?.percentage ?? (onboarding.paycheckAmount > 0 
+            ? Math.round((cat.allocated / onboarding.paycheckAmount) * 100)
+            : 0)
+          
+          return {
+            id: cat.id,
+            name: cat.name,
+            type: 'percent' as const,
+            allocated: cat.allocated,
+            spent: cat.spent,
+            remaining: cat.allocated - cat.spent,
+            percent: percent,
+            spendingCategories: [] // Onboarding categories don't have spending categories assigned yet
+          }
+        })
+        
+        const decoratedCats = decorateCategories(convertedCategories)
+        setCategories(decoratedCats)
+        
+        // Generate alerts from onboarding categories
+        const generatedAlerts = generateAlerts(convertedCategories, currencySymbol)
+        setAlerts(generatedAlerts.map(alert => ({
+          id: alert.id,
+          type: alert.type,
+          title: alert.title,
+          message: alert.message,
+          time: alert.time
+        })))
+        
+        // Update user data
+        const totalBudget = convertedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
+        const totalSpent = convertedCategories.reduce((sum, cat) => sum + cat.spent, 0)
+        const monthlySpending = calculateMonthlySpending()
+        
+        setUserData(prev => ({
+          ...prev,
+          balance: onboarding.paycheckAmount,
+          monthlySpending: monthlySpending,
+          budgetRemaining: totalBudget - totalSpent,
+          paycheckAmount: onboarding.paycheckAmount
+        }))
+        
+        // Set summary to null to indicate we're using onboarding data
+        setSummary(null)
+        return true
+      }
+    }
+    return false
+  }
+
+  // Load data from API or fallback to onboarding
   async function loadData() {
     setLoading(true)
     setError(null)
     try {
+      // Try to load from API first
       const data = await fetchSummary()
       setSummary(data)
       setCategories(decorateCategories(data.categories))
       setAlerts(mapAlerts(data.alerts))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data')
+      // API failed, try to load from onboarding data
+      const loaded = loadOnboardingData()
+      if (!loaded) {
+        setError(err instanceof Error ? err.message : 'Failed to load data. Please complete onboarding.')
+      }
     } finally {
       setLoading(false)
     }
@@ -806,8 +1146,39 @@ export default function HomePage() {
   async function handleAddCategory(name: string, percent: number, spendingCategories: SpendingCategory[]) {
     setError(null)
     try {
-      await createCategory({ name, percent, spendingCategories })
-      await loadData()
+      if (summary) {
+        // Using API
+        await createCategory({ name, percent, spendingCategories })
+        await loadData()
+      } else {
+        // Using onboarding data - update localStorage
+        const onboarding = getOnboardingData()
+        if (onboarding) {
+          const newCategoryId = Date.now().toString()
+          const allowance = onboarding.paycheckAmount || monthlyAllowance || 0
+          const newCategoryAmount = (percent / 100) * allowance
+          
+          const updatedCategories = [
+            ...onboarding.categories,
+            {
+              id: newCategoryId,
+              name,
+              icon: 'CreditCard',
+              amount: newCategoryAmount,
+              percentage: percent,
+              isCustom: true
+            }
+          ]
+          
+          const updatedOnboarding = {
+            ...onboarding,
+            categories: updatedCategories
+          }
+          
+          localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
+          loadOnboardingData()
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add category')
     }
@@ -816,8 +1187,23 @@ export default function HomePage() {
   async function handleDeleteCategory(id: string) {
     setError(null)
     try {
-      await deleteCategory(id)
-      await loadData()
+      if (summary) {
+        // Using API
+        await deleteCategory(id)
+        await loadData()
+      } else {
+        // Using onboarding data - update localStorage
+        const onboarding = getOnboardingData()
+        if (onboarding) {
+          const updatedCategories = onboarding.categories.filter(cat => cat.id !== id)
+          const updatedOnboarding = {
+            ...onboarding,
+            categories: updatedCategories
+          }
+          localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
+          loadOnboardingData()
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete category')
     }
@@ -826,15 +1212,84 @@ export default function HomePage() {
   async function handleEditCategory(updatedCategory: UiCategory) {
     setError(null)
     try {
-      await updateCategory(updatedCategory.id, {
-        name: updatedCategory.name,
-        percent: updatedCategory.percent ?? 0,
-        spendingCategories: updatedCategory.spendingCategories,
-      })
-      await loadData()
+      if (summary) {
+        // Using API
+        await updateCategory(updatedCategory.id, {
+          name: updatedCategory.name,
+          percent: updatedCategory.percent ?? 0,
+          spendingCategories: updatedCategory.spendingCategories,
+        })
+        await loadData()
+      } else {
+        // Using onboarding data - update localStorage
+        const onboarding = getOnboardingData()
+        if (onboarding) {
+          const allowance = onboarding.paycheckAmount || monthlyAllowance || 0
+          const updatedCategories = onboarding.categories.map(cat => 
+            cat.id === updatedCategory.id
+              ? {
+                  ...cat,
+                  name: updatedCategory.name,
+                  percentage: updatedCategory.percent ?? 0,
+                  amount: ((updatedCategory.percent ?? 0) / 100) * allowance
+                }
+              : cat
+          )
+          const updatedOnboarding = {
+            ...onboarding,
+            categories: updatedCategories
+          }
+          localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
+          loadOnboardingData()
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update category')
     }
+  }
+
+  // Handle adding transaction (dev only)
+  const handleAddTransaction = (categoryId: string, amount: number, description: string) => {
+    saveTransaction({
+      category: categoryId,
+      amount,
+      description,
+      type: 'expense'
+    })
+    
+    // Recalculate all spending from transactions
+    const updatedCategories = categories.map(cat => {
+      const spent = calculateCategorySpending(cat.id)
+      return {
+        ...cat,
+        spent,
+        remaining: cat.allocated - spent
+      }
+    })
+    setCategories(updatedCategories)
+    
+    const monthlySpending = calculateMonthlySpending()
+    const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
+    const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
+    
+    setUserData(prev => ({
+      ...prev,
+      monthlySpending,
+      budgetRemaining: totalBudget - totalSpent
+    }))
+    
+    // Regenerate alerts
+    const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
+    setAlerts(generatedAlerts.map(alert => ({
+      id: alert.id,
+      type: alert.type,
+      title: alert.title,
+      message: alert.message,
+      time: alert.time
+    })))
+    
+    // Trigger a custom event to update the UI
+    window.dispatchEvent(new Event('vaultx-storage-change'))
   }
 
   return (
@@ -845,11 +1300,41 @@ export default function HomePage() {
             <img src="/wise-logo.svg" alt="Wise" className="h-5" />
           </div>
           <div className="flex items-center gap-3">
-            <button className="p-2 rounded-full bg-bg-neutral hover:bg-interactive-accent/20 transition-colors" onClick={loadData}>
+            {/* Dev Mode: Dev Tools */}
+            {isDevMode() && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowDevTools(!showDevTools)}
+                  className="px-3 py-2 rounded-lg bg-interactive-accent/20 hover:bg-interactive-accent/30 text-interactive-primary text-sm font-medium flex items-center gap-2 transition-colors"
+                  title="Dev Tools"
+                >
+                  <Plus className="w-4 h-4" />
+                  Dev Tools
+                </button>
+                <button
+                  onClick={resetOnboarding}
+                  className="px-3 py-2 rounded-lg bg-sentiment-warning/20 hover:bg-sentiment-warning/30 text-sentiment-warning text-sm font-medium flex items-center gap-2 transition-colors"
+                  title="Reset Onboarding (Dev Mode)"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset
+                </button>
+              </div>
+            )}
+            <button 
+              className="p-2 rounded-full bg-bg-neutral hover:bg-interactive-accent/20 transition-colors" 
+              onClick={() => {
+                if (summary) {
+                  loadData()
+                } else {
+                  loadOnboardingData()
+                }
+              }}
+            >
               <Bell className="w-5 h-5 text-interactive-primary" />
             </button>
             <div className="w-10 h-10 rounded-full bg-interactive-accent flex items-center justify-center text-interactive-primary font-bold">
-              U
+              {userData.name.charAt(0)}
             </div>
           </div>
         </div>
@@ -871,23 +1356,62 @@ export default function HomePage() {
           {loading && <div className="text-content-secondary mb-4">Loading...</div>}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <EditableAllowanceCard
-              value={monthlyAllowance}
-              currency={currency}
-              onUpdate={handleUpdateAllowance}
-              delay={0}
-            />
-            {topStats.map((stat, index) => (
-              <StatCard
-                key={stat.label}
-                label={stat.label}
-                value={stat.value}
-                change={stat.change}
-                changeType={stat.changeType}
-                icon={stat.icon}
-                delay={(index + 1) * 0.1}
-              />
-            ))}
+            {summary ? (
+              <>
+                <EditableAllowanceCard
+                  value={monthlyAllowance}
+                  currency={currency}
+                  onUpdate={handleUpdateAllowance}
+                  delay={0}
+                />
+                {topStats.map((stat, index) => (
+                  <StatCard
+                    key={stat.label}
+                    label={stat.label}
+                    value={stat.value}
+                    change={stat.change}
+                    changeType={stat.changeType}
+                    icon={stat.icon}
+                    delay={(index + 1) * 0.1}
+                  />
+                ))}
+              </>
+            ) : (
+              <>
+                <StatCard 
+                  label="Monthly Allowance" 
+                  value={formatCurrency(monthlyAllowance, currency)} 
+                  change={monthlyAllowance > 0 ? "From onboarding" : "Set up your budget"} 
+                  changeType={monthlyAllowance > 0 ? "positive" : "neutral"} 
+                  icon={Wallet} 
+                  delay={0.1} 
+                />
+                <StatCard 
+                  label="Monthly Spending" 
+                  value={formatCurrency(allowanceSpent, currency)} 
+                  change={formatCurrency(allowanceLeft, currency) + " remaining"} 
+                  changeType="neutral" 
+                  icon={TrendingUp} 
+                  delay={0.2} 
+                />
+                <StatCard 
+                  label="Budget Used" 
+                  value={monthlyAllowance > 0 ? `${Math.round((allowanceSpent / monthlyAllowance) * 100)}%` : '0%'} 
+                  change={allowanceSpent > monthlyAllowance ? "Over budget" : "On track"} 
+                  changeType={allowanceSpent > monthlyAllowance ? "negative" : "positive"} 
+                  icon={Target} 
+                  delay={0.3} 
+                />
+                <StatCard 
+                  label="Alerts" 
+                  value={alertCount.toString()} 
+                  change={alertCount > 0 ? "Needs attention" : "All good"} 
+                  changeType={alertCount > 0 ? "negative" : "positive"} 
+                  icon={AlertTriangle} 
+                  delay={0.4} 
+                />
+              </>
+            )}
           </div>
         </section>
 
@@ -971,6 +1495,57 @@ export default function HomePage() {
           </div>
         </section>
       </main>
+
+      {/* Dev Tools Modal */}
+      {isDevMode() && showDevTools && (
+        <DevToolsModal
+          categories={categories.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            type: cat.type,
+            allocated: cat.allocated,
+            spent: cat.spent,
+            remaining: cat.remaining,
+            percent: cat.percent,
+            spendingCategories: cat.spendingCategories
+          }))}
+          currencySymbol={currencySymbol}
+          onAddTransaction={handleAddTransaction}
+          onDeleteTransaction={(id) => {
+            deleteTransaction(id)
+            // Recalculate after deletion
+            const updatedCategories = categories.map(cat => ({
+              ...cat,
+              spent: calculateCategorySpending(cat.id),
+              remaining: cat.allocated - calculateCategorySpending(cat.id)
+            }))
+            setCategories(updatedCategories)
+            
+            const monthlySpending = calculateMonthlySpending()
+            const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
+            const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
+            
+            setUserData(prev => ({
+              ...prev,
+              monthlySpending,
+              budgetRemaining: totalBudget - totalSpent
+            }))
+            
+            const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
+            setAlerts(generatedAlerts.map(alert => ({
+              id: alert.id,
+              type: alert.type,
+              title: alert.title,
+              message: alert.message,
+              time: alert.time
+            })))
+            
+            // Trigger update event
+            window.dispatchEvent(new Event('vaultx-storage-change'))
+          }}
+          onClose={() => setShowDevTools(false)}
+        />
+      )}
 
       <footer className="border-t border-border-neutral py-8 mt-16">
         <p className="text-center text-sm text-content-tertiary">VaultX • Made for Wise Hackathon 2025</p>
