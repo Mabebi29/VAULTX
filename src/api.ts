@@ -58,6 +58,10 @@ export function addTransaction(payload: { categoryId: string; amount: number; no
   })
 }
 
+export function deleteTransaction(id: string) {
+  return request<void>('/transactions/' + id, { method: 'DELETE' })
+}
+
 export function fetchOnboardingStatus() {
   return request<{ onboarding: { completed: boolean; updatedAt: string } }>('/onboarding')
 }

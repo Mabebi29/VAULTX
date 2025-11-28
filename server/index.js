@@ -222,6 +222,18 @@ app.post('/transactions', (req, res) => {
   res.status(201).json({ transaction, category: categoryUsage });
 });
 
+app.delete('/transactions/:id', (req, res) => {
+  const id = req.params.id;
+  const index = store.transactions.findIndex((txn) => txn.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Transaction not found.' });
+  }
+
+  store.transactions.splice(index, 1);
+  store.alerts = buildAlerts();
+  res.status(204).send();
+});
+
 app.post('/allocate', (req, res) => {
   const amount = toNumber(req.body.amount);
 

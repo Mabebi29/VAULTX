@@ -25,7 +25,7 @@ import {
   LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, useRef } from 'react'
-import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck, createTransaction, deleteTransaction as deleteTransactionAPI } from '../api'
+import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck, addTransaction as addTransactionAPI, deleteTransaction as deleteTransactionAPI } from '../api'
 import type { Alert as ApiAlert, Category, Summary, SpendingCategory } from '../types'
 import { SPENDING_CATEGORIES } from '../types'
 import { 
