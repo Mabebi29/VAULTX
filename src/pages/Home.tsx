@@ -20,10 +20,12 @@ import {
   Trash2,
   X,
   RotateCcw,
+  PartyPopper,
+  Smile,
   LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck } from '../api'
+import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck, createTransaction, deleteTransaction as deleteTransactionAPI } from '../api'
 import type { Alert as ApiAlert, Category, Summary, SpendingCategory } from '../types'
 import { SPENDING_CATEGORIES } from '../types'
 import { 
@@ -52,6 +54,8 @@ const iconMap: Record<string, LucideIcon> = {
   CreditCard,
   Wallet,
   Bell,
+  PartyPopper,
+  Smile,
 }
 
 const palette = ['#163300', '#2F5711', '#0E0F0C', '#A8200D', '#0F5132', '#1D4ED8', '#92400E']
@@ -77,16 +81,54 @@ function formatTime(value: string) {
 }
 
 function pickIcon(name: string) {
+  // Special case: Savings should use Wallet icon
+  if (name.toLowerCase().includes('savings')) {
+    return 'Wallet'
+  }
+  // Special case: Essentials should use Home icon
+  if (name.toLowerCase().includes('essentials')) {
+    return 'Home'
+  }
+  // Special case: Lifestyle should use PartyPopper icon
+  if (name.toLowerCase().includes('lifestyle')) {
+    return 'PartyPopper'
+  }
+  // Special case: Personal should use Smile icon
+  if (name.toLowerCase().includes('personal')) {
+    return 'Smile'
+  }
   const key = Object.keys(iconMap).find((icon) => name.toLowerCase().includes(icon.replace(/[A-Z]/g, ' ').toLowerCase().trim()))
   return key || 'CreditCard'
 }
 
 function decorateCategories(categories: Category[]): UiCategory[] {
-  return categories.map((cat, idx) => ({
-    ...cat,
-    icon: pickIcon(cat.name),
-    color: palette[idx % palette.length],
-  }))
+  return categories.map((cat, idx) => {
+    const nameLower = cat.name.toLowerCase()
+    let color = palette[idx % palette.length]
+    
+    // Essentials should use #FFC091
+    if (nameLower.includes('essentials')) {
+      color = '#FFC091'
+    }
+    // Savings should use #A0E1E1
+    else if (nameLower.includes('savings')) {
+      color = '#A0E1E1'
+    }
+    // Lifestyle should use #FFD7EF
+    else if (nameLower.includes('lifestyle')) {
+      color = '#FFD7EF'
+    }
+    // Personal should use #3A341C
+    else if (nameLower.includes('personal')) {
+      color = '#3A341C'
+    }
+    
+    return {
+      ...cat,
+      icon: pickIcon(cat.name),
+      color,
+    }
+  })
 }
 
 function mapAlerts(alerts: ApiAlert[]): UiAlert[] {
@@ -129,9 +171,16 @@ function StatCard({
       className="card-elevated p-6"
     >
       <div className="flex items-center justify-between mb-4">
-        <span className="text-content-secondary text-sm">{label}</span>
-        <div className="w-10 h-10 rounded-xl bg-bg-neutral flex items-center justify-center">
-          <Icon className="w-5 h-5 text-interactive-primary" />
+        <span className="text-content-secondary" style={{
+          fontFamily: "'Inter', system-ui, sans-serif",
+          fontWeight: 600,
+          fontSize: '18px',
+          lineHeight: '24px',
+          letterSpacing: '-0.01em',
+          marginBottom: '8px'
+        }}>{label}</span>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#9FE870' }}>
+          <Icon className="w-5 h-5" style={{ color: '#163300' }} />
         </div>
       </div>
       <p className="text-2xl font-semibold text-content-primary mb-1">{value}</p>
@@ -181,16 +230,23 @@ function EditableAllowanceCard({
       {!isEditing && (
         <button
           onClick={() => setIsEditing(true)}
-          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-bg-neutral transition-colors group"
+          className="absolute bottom-3 right-3 p-1.5 rounded-full hover:bg-bg-neutral transition-colors group"
         >
           <Pencil className="w-4 h-4 text-content-tertiary group-hover:text-interactive-primary transition-colors" />
         </button>
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <span className="text-content-secondary text-sm">Monthly Allowance</span>
-        <div className="w-10 h-10 rounded-xl bg-bg-neutral flex items-center justify-center">
-          <Wallet className="w-5 h-5 text-interactive-primary" />
+        <span className="text-content-secondary" style={{
+          fontFamily: "'Inter', system-ui, sans-serif",
+          fontWeight: 600,
+          fontSize: '18px',
+          lineHeight: '24px',
+          letterSpacing: '-0.01em',
+          marginBottom: '8px'
+        }}>Monthly Allowance</span>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#9FE870' }}>
+          <Wallet className="w-5 h-5" style={{ color: '#163300' }} />
         </div>
       </div>
 
@@ -218,7 +274,8 @@ function EditableAllowanceCard({
             </button>
             <button
               onClick={handleCancel}
-              className="flex-1 py-2 px-3 rounded-full font-medium text-sm border border-border-neutral"
+              className="flex-1 py-2 px-3 rounded-full font-medium text-sm"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Cancel
             </button>
@@ -259,6 +316,7 @@ function BudgetCard({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [pending, setPending] = useState(false)
+  const [showSpendingDropdown, setShowSpendingDropdown] = useState(false)
   const [editName, setEditName] = useState(category.name)
   const [editPercent, setEditPercent] = useState((category.percent ?? 0).toString())
   const [editSpendingCategories, setEditSpendingCategories] = useState<SpendingCategory[]>(
@@ -308,16 +366,21 @@ function BudgetCard({
     setEditPercent((category.percent ?? 0).toString())
     setEditSpendingCategories(category.spendingCategories || [])
     setIsEditing(false)
+    setShowSpendingDropdown(false)
   }
 
-  const toggleSpendingCategory = (cat: SpendingCategory) => {
-    // Can always deselect, but can only select if not used by another category
-    if (editSpendingCategories.includes(cat)) {
-      setEditSpendingCategories(prev => prev.filter(c => c !== cat))
-    } else if (!usedSpendingCategories.has(cat)) {
-      setEditSpendingCategories(prev => [...prev, cat])
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!showSpendingDropdown) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.spending-dropdown-container')) {
+        setShowSpendingDropdown(false)
+      }
     }
-  }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showSpendingDropdown])
 
   return (
     <motion.div
@@ -362,7 +425,7 @@ function BudgetCard({
               onClick={handleDelete}
               disabled={pending}
               className="flex-1 py-2 px-3 rounded-full font-semibold text-sm transition-colors disabled:opacity-50"
-              style={{ backgroundColor: '#A8200D', color: '#FFFFFF' }}
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Delete
             </button>
@@ -418,29 +481,57 @@ function BudgetCard({
           </div>
           <div className="mb-3 flex-1">
             <label className="block text-xs font-medium text-content-primary mb-2">Spending Categories</label>
-            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-              {SPENDING_CATEGORIES.map((cat) => {
-                const isSelected = editSpendingCategories.includes(cat.value)
-                const isDisabled = !isSelected && usedSpendingCategories.has(cat.value)
-                return (
-                  <button
-                    key={cat.value}
-                    type="button"
-                    onClick={() => toggleSpendingCategory(cat.value)}
-                    disabled={isDisabled}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                      isSelected
-                        ? 'bg-interactive-primary text-white'
-                        : isDisabled
-                        ? 'bg-bg-neutral text-content-tertiary opacity-50 cursor-not-allowed'
-                        : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
-                    }`}
-                    title={isDisabled ? 'Already assigned to another budget category' : ''}
-                  >
-                    {cat.label}
-                  </button>
-                )
-              })}
+            <div className="relative spending-dropdown-container">
+              <button
+                type="button"
+                onClick={() => setShowSpendingDropdown(!showSpendingDropdown)}
+                className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
+                  focus:border-interactive-primary focus:outline-none text-sm text-left flex items-center justify-between"
+              >
+                <span className="text-content-primary">
+                  {editSpendingCategories.length > 0 
+                    ? `${editSpendingCategories.length} selected` 
+                    : 'Select categories'}
+                </span>
+                <ChevronDown className={`w-4 h-4 text-content-tertiary transition-transform ${showSpendingDropdown ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {showSpendingDropdown && (
+                <div className="absolute z-20 w-full mt-1 bg-white border border-border-neutral rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {SPENDING_CATEGORIES.map((cat) => {
+                    const isSelected = editSpendingCategories.includes(cat.value)
+                    return (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setEditSpendingCategories(prev => prev.filter(c => c !== cat.value))
+                          } else {
+                            setEditSpendingCategories(prev => [...prev, cat.value])
+                          }
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors ${
+                          isSelected
+                            ? 'bg-interactive-accent/20 text-interactive-primary'
+                            : 'text-content-primary hover:bg-bg-neutral'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                          isSelected 
+                            ? 'bg-interactive-accent border-interactive-primary' 
+                            : 'border-border-neutral'
+                        }`}>
+                          {isSelected && (
+                            <CheckCircle className="w-3 h-3 text-interactive-primary" />
+                          )}
+                        </div>
+                        <span>{cat.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex gap-2 mt-auto pt-2">
@@ -454,7 +545,8 @@ function BudgetCard({
             </button>
             <button
               onClick={handleCancelEdit}
-              className="flex-1 py-2 px-3 rounded-full font-medium text-sm border border-border-neutral"
+              className="flex-1 py-2 px-3 rounded-full font-medium text-sm"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Cancel
             </button>
@@ -481,7 +573,14 @@ function BudgetCard({
         </div>
       </div>
 
-      <h3 className="font-semibold text-content-primary mb-1">{category.name}</h3>
+      <h3 className="text-content-primary" style={{
+        fontFamily: "'Inter', system-ui, sans-serif",
+        fontWeight: 600,
+        fontSize: '18px',
+        lineHeight: '24px',
+        letterSpacing: '-0.01em',
+        marginBottom: '8px'
+      }}>{category.name}</h3>
       
       {category.spendingCategories && category.spendingCategories.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
@@ -666,11 +765,12 @@ function AddCategoryCard({
                     disabled={isDisabled}
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                       isSelected
-                        ? 'bg-interactive-primary text-white'
+                        ? 'text-[#163300]'
                         : isDisabled
                         ? 'bg-bg-neutral text-content-tertiary opacity-50 cursor-not-allowed'
                         : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
                     }`}
+                    style={isSelected ? { backgroundColor: '#9FE870' } : {}}
                     title={isDisabled ? 'Already assigned to another budget category' : ''}
                   >
                     {cat.label}
@@ -693,8 +793,8 @@ function AddCategoryCard({
             <button
               type="button"
               onClick={handleCancel}
-              className="flex-1 py-2.5 px-4 rounded-full border border-border-neutral 
-                text-content-primary font-medium text-sm hover:bg-bg-neutral transition-colors"
+              className="flex-1 py-2.5 px-4 rounded-full font-medium text-sm transition-colors"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Cancel
             </button>
@@ -1146,10 +1246,15 @@ export default function HomePage() {
   async function handleAddCategory(name: string, percent: number, spendingCategories: SpendingCategory[]) {
     setError(null)
     try {
+      // Always try API first if we have summary (API was working)
       if (summary) {
-        // Using API
-        await createCategory({ name, percent, spendingCategories })
-        await loadData()
+        try {
+          await createCategory({ name, percent, spendingCategories })
+          await loadData()
+        } catch (apiError) {
+          // If API fails but we have summary, show error
+          throw apiError
+        }
       } else {
         // Using onboarding data - update localStorage
         const onboarding = getOnboardingData()
@@ -1212,35 +1317,40 @@ export default function HomePage() {
   async function handleEditCategory(updatedCategory: UiCategory) {
     setError(null)
     try {
-      if (summary) {
-        // Using API
+      // Always try API first if available
+      try {
         await updateCategory(updatedCategory.id, {
           name: updatedCategory.name,
           percent: updatedCategory.percent ?? 0,
           spendingCategories: updatedCategory.spendingCategories,
         })
         await loadData()
-      } else {
-        // Using onboarding data - update localStorage
-        const onboarding = getOnboardingData()
-        if (onboarding) {
-          const allowance = onboarding.paycheckAmount || monthlyAllowance || 0
-          const updatedCategories = onboarding.categories.map(cat => 
-            cat.id === updatedCategory.id
-              ? {
-                  ...cat,
-                  name: updatedCategory.name,
-                  percentage: updatedCategory.percent ?? 0,
-                  amount: ((updatedCategory.percent ?? 0) / 100) * allowance
-                }
-              : cat
-          )
-          const updatedOnboarding = {
-            ...onboarding,
-            categories: updatedCategories
+      } catch (apiError) {
+        // If API fails and we have onboarding data, fall back to localStorage
+        if (!summary) {
+          const onboarding = getOnboardingData()
+          if (onboarding) {
+            const allowance = onboarding.paycheckAmount || monthlyAllowance || 0
+            const updatedCategories = onboarding.categories.map(cat => 
+              cat.id === updatedCategory.id
+                ? {
+                    ...cat,
+                    name: updatedCategory.name,
+                    percentage: updatedCategory.percent ?? 0,
+                    amount: ((updatedCategory.percent ?? 0) / 100) * allowance
+                  }
+                : cat
+            )
+            const updatedOnboarding = {
+              ...onboarding,
+              categories: updatedCategories
+            }
+            localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
+            loadOnboardingData()
           }
-          localStorage.setItem('vaultx_onboarding', JSON.stringify(updatedOnboarding))
-          loadOnboardingData()
+        } else {
+          // If we have summary but API fails, throw the error
+          throw apiError
         }
       }
     } catch (err) {
@@ -1249,47 +1359,65 @@ export default function HomePage() {
   }
 
   // Handle adding transaction (dev only)
-  const handleAddTransaction = (categoryId: string, amount: number, description: string) => {
-    saveTransaction({
-      category: categoryId,
-      amount,
-      description,
-      type: 'expense'
-    })
-    
-    // Recalculate all spending from transactions
-    const updatedCategories = categories.map(cat => {
-      const spent = calculateCategorySpending(cat.id)
-      return {
-        ...cat,
-        spent,
-        remaining: cat.allocated - spent
+  const handleAddTransaction = async (categoryId: string, amount: number, description: string) => {
+    setError(null)
+    try {
+      // Try API first if available
+      try {
+        await createTransaction({
+          category: categoryId,
+          amount,
+          description,
+          type: 'expense'
+        })
+        // Reload data from API
+        await loadData()
+      } catch (apiError) {
+        // If API fails, fall back to localStorage
+        saveTransaction({
+          category: categoryId,
+          amount,
+          description,
+          type: 'expense'
+        })
+        
+        // Recalculate all spending from transactions
+        const updatedCategories = categories.map(cat => {
+          const spent = calculateCategorySpending(cat.id)
+          return {
+            ...cat,
+            spent,
+            remaining: cat.allocated - spent
+          }
+        })
+        setCategories(updatedCategories)
+        
+        const monthlySpending = calculateMonthlySpending()
+        const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
+        const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
+        
+        setUserData(prev => ({
+          ...prev,
+          monthlySpending,
+          budgetRemaining: totalBudget - totalSpent
+        }))
+        
+        // Regenerate alerts
+        const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
+        setAlerts(generatedAlerts.map(alert => ({
+          id: alert.id,
+          type: alert.type,
+          title: alert.title,
+          message: alert.message,
+          time: alert.time
+        })))
+        
+        // Trigger a custom event to update the UI
+        window.dispatchEvent(new Event('vaultx-storage-change'))
       }
-    })
-    setCategories(updatedCategories)
-    
-    const monthlySpending = calculateMonthlySpending()
-    const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
-    const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
-    
-    setUserData(prev => ({
-      ...prev,
-      monthlySpending,
-      budgetRemaining: totalBudget - totalSpent
-    }))
-    
-    // Regenerate alerts
-    const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
-    setAlerts(generatedAlerts.map(alert => ({
-      id: alert.id,
-      type: alert.type,
-      title: alert.title,
-      message: alert.message,
-      time: alert.time
-    })))
-    
-    // Trigger a custom event to update the UI
-    window.dispatchEvent(new Event('vaultx-storage-change'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add transaction')
+    }
   }
 
   return (
@@ -1343,8 +1471,27 @@ export default function HomePage() {
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-16">
         <section>
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-            <h1 className="text-3xl font-semibold mb-2 text-[#163300]">Good morning! 👋</h1>
-            <p className="text-content-secondary">Here&apos;s your financial overview for this month.</p>
+            <h1 className="mb-2" style={{
+              fontFamily: "'Wise Sans', 'Inter', system-ui, sans-serif",
+              fontWeight: 700,
+              fontSize: '40px',
+              lineHeight: '0.85',
+              letterSpacing: '0.6px',
+              textTransform: 'uppercase',
+              color: '#163300',
+              fontStyle: 'normal',
+              margin: 0,
+              padding: 0
+            }}>Good evening!</h1>
+            <p className="text-content-secondary" style={{
+              marginTop: '12px',
+              fontFamily: "'Inter', system-ui, sans-serif",
+              fontWeight: 600,
+              fontSize: '22px',
+              lineHeight: '28px',
+              letterSpacing: '-0.015em',
+              marginBottom: '8px'
+            }}>Here&apos;s your financial overview for this month.</p>
           </motion.div>
 
           {error && (
@@ -1408,18 +1555,40 @@ export default function HomePage() {
         </section>
 
         <section>
-          <motion.h2
+          <motion.h2 
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="text-2xl font-semibold text-content-primary mb-6"
+            className="text-content-primary"
+            style={{
+              fontFamily: "'Inter', system-ui, sans-serif",
+              fontWeight: 600,
+              fontSize: '22px',
+              lineHeight: '28px',
+              letterSpacing: '-0.015em',
+              marginBottom: '8px'
+            }}
           >
             Budget Categories
           </motion.h2>
           <div className="grid grid-cols-1 gap-4">
             <div className="flex items-center justify-between px-1 mb-2">
-              <span className="text-sm text-content-secondary">Total allocated: {totalUsedPercent.toFixed(0)}%</span>
-              <span className="text-sm text-content-secondary">{availablePercent.toFixed(0)}% go to savings</span>
+              <span className="text-content-secondary" style={{
+                fontFamily: "'Inter', system-ui, sans-serif",
+                fontWeight: 400,
+                fontSize: '14px',
+                lineHeight: '22px',
+                letterSpacing: '0.01em',
+                marginBottom: '8px'
+              }}>Total allocated: {totalUsedPercent.toFixed(0)}%</span>
+              <span className="text-content-secondary" style={{
+                fontFamily: "'Inter', system-ui, sans-serif",
+                fontWeight: 400,
+                fontSize: '14px',
+                lineHeight: '22px',
+                letterSpacing: '0.01em',
+                marginBottom: '8px'
+              }}>{availablePercent.toFixed(0)}% go to savings</span>
             </div>
             {categories.map((category, index) => (
               <BudgetCard
@@ -1474,11 +1643,9 @@ export default function HomePage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={() => setShowAllAlerts(!showAllAlerts)}
-                className="w-full py-3 px-4 rounded-xl border border-border-neutral 
-                  hover:bg-bg-neutral hover:border-interactive-primary
-                  text-content-secondary hover:text-interactive-primary
-                  font-medium text-sm transition-all duration-200
+                className="w-full py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200
                   flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#9FE870', color: '#163300' }}
               >
                 <span>{showAllAlerts ? 'Show Less' : `See More (${alerts.length - 2})`}</span>
                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showAllAlerts ? 'rotate-180' : ''}`} />
@@ -1503,8 +1670,52 @@ export default function HomePage() {
           }))}
           currencySymbol={currencySymbol}
           onAddTransaction={handleAddTransaction}
-          onDeleteTransaction={(id) => {
-            deleteTransaction(id)
+          onDeleteTransaction={async (id) => {
+            setError(null)
+            try {
+              // Try API first if available
+              try {
+                await deleteTransactionAPI(id)
+                await loadData()
+              } catch (apiError) {
+                // If API fails, fall back to localStorage
+                deleteTransaction(id)
+                // Recalculate spending
+                const updatedCategories = categories.map(cat => {
+                  const spent = calculateCategorySpending(cat.id)
+                  return {
+                    ...cat,
+                    spent,
+                    remaining: cat.allocated - spent
+                  }
+                })
+                setCategories(updatedCategories)
+                
+                const monthlySpending = calculateMonthlySpending()
+                const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
+                const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
+                
+                setUserData(prev => ({
+                  ...prev,
+                  monthlySpending,
+                  budgetRemaining: totalBudget - totalSpent
+                }))
+                
+                // Regenerate alerts
+                const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
+                setAlerts(generatedAlerts.map(alert => ({
+                  id: alert.id,
+                  type: alert.type,
+                  title: alert.title,
+                  message: alert.message,
+                  time: alert.time
+                })))
+                
+                window.dispatchEvent(new Event('vaultx-storage-change'))
+              }
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Failed to delete transaction')
+            }
             // Recalculate after deletion
             const updatedCategories = categories.map(cat => ({
               ...cat,

@@ -50,3 +50,14 @@ export function updatePaycheck(amount: number, currency?: string) {
     body: JSON.stringify({ amount, currency }),
   })
 }
+
+export function createTransaction(payload: { category: string; amount: number; description: string; type: 'expense' | 'income' }) {
+  return request<{ transaction: { id: string; category: string; amount: number; description: string; type: string; date: string } }>('/transactions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deleteTransaction(id: string) {
+  return request<void>('/transactions/' + id, { method: 'DELETE' })
+}
