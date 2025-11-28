@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Wallet, 
-  TrendingUp, 
-  Target, 
+import {
+  Wallet,
+  TrendingUp,
+  Target,
   AlertTriangle,
   ShoppingCart,
   Home,
@@ -18,14 +18,12 @@ import {
   ChevronDown,
   Pencil,
   Trash2,
-  LucideIcon
+  LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { fetchSummary, createCategory, updateCategory, deleteCategory } from '../api'
+import type { Alert as ApiAlert, Category, Summary } from '../types'
 
-// Import data from JSON
-import data from '../data/categories.json'
-
-// Icon mapping - maps string names to actual icon components
 const iconMap: Record<string, LucideIcon> = {
   ShoppingCart,
   Home,
@@ -38,28 +36,59 @@ const iconMap: Record<string, LucideIcon> = {
   Bell,
 }
 
-// Types
-type AlertType = 'warning' | 'danger' | 'success' | 'info'
+const palette = ['#163300', '#2F5711', '#0E0F0C', '#A8200D', '#0F5132', '#1D4ED8', '#92400E']
 
-interface Category {
+type UiAlert = {
   id: string
-  name: string
-  icon: string
-  allocated: number
-  spent: number
-  color: string
-}
-
-interface Alert {
-  id: string
-  type: AlertType
+  type: 'warning' | 'danger' | 'success' | 'info'
   title: string
   message: string
   time: string
 }
 
-// Stat Card Component
-function StatCard({ label, value, change, changeType = 'neutral', icon: Icon, delay = 0 }: {
+type UiCategory = Category & { icon: string; color: string }
+
+function formatCurrency(value: number, currency: string) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value)
+}
+
+function formatTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
+
+function pickIcon(name: string) {
+  const key = Object.keys(iconMap).find((icon) => name.toLowerCase().includes(icon.replace(/[A-Z]/g, ' ').toLowerCase().trim()))
+  return key || 'CreditCard'
+}
+
+function decorateCategories(categories: Category[]): UiCategory[] {
+  return categories.map((cat, idx) => ({
+    ...cat,
+    icon: pickIcon(cat.name),
+    color: palette[idx % palette.length],
+  }))
+}
+
+function mapAlerts(alerts: ApiAlert[]): UiAlert[] {
+  return alerts.map((alert) => ({
+    id: alert.id,
+    type: alert.severity === 'critical' ? 'danger' : 'warning',
+    title: alert.kind === 'over_budget' ? `${alert.categoryName} over budget` : `${alert.categoryName} near limit`,
+    message: alert.message,
+    time: formatTime(alert.updatedAt),
+  }))
+}
+
+function StatCard({
+  label,
+  value,
+  change,
+  changeType = 'neutral',
+  icon: Icon,
+  delay = 0,
+}: {
   label: string
   value: string
   change?: string
@@ -93,26 +122,36 @@ function StatCard({ label, value, change, changeType = 'neutral', icon: Icon, de
   )
 }
 
-// Budget Card Component
-function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
-  category: Category
+function BudgetCard({
+  category,
+  delay = 0,
+  onDelete,
+  onEdit,
+}: {
+  category: UiCategory
   delay?: number
-  onDelete: (id: string) => void
-  onEdit: (category: Category) => void
+  onDelete: (id: string) => Promise<void>
+  onEdit: (category: UiCategory) => Promise<void>
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [pending, setPending] = useState(false)
   const [editName, setEditName] = useState(category.name)
-  const [editBudget, setEditBudget] = useState(category.allocated.toString())
-  
+  const [editBudget, setEditBudget] = useState(
+    category.type === 'percent' ? (category.percent ?? '').toString() : category.allocated.toString(),
+  )
+
   const Icon = iconMap[category.icon] || CreditCard
-  const percentage = Math.min((category.spent / category.allocated) * 100, 100)
+  const denominator = category.allocated || 1
+  const percentage = Math.min((category.spent / denominator) * 100, 100)
   const isOverBudget = category.spent > category.allocated
   const remaining = category.allocated - category.spent
 
-  const handleDelete = () => {
-    onDelete(category.id)
+  const handleDelete = async () => {
+    setPending(true)
+    await onDelete(category.id)
+    setPending(false)
     setShowDeleteConfirm(false)
     setShowMenu(false)
   }
@@ -122,20 +161,23 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
     setShowMenu(false)
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (editName.trim() && editBudget) {
-      onEdit({
+      setPending(true)
+      await onEdit({
         ...category,
         name: editName.trim(),
-        allocated: Number(editBudget)
+        allocated: Number(editBudget),
+        percent: category.type === 'percent' ? Number(editBudget) : category.percent,
       })
+      setPending(false)
       setIsEditing(false)
     }
   }
 
   const handleCancelEdit = () => {
     setEditName(category.name)
-    setEditBudget(category.allocated.toString())
+    setEditBudget(category.type === 'percent' ? (category.percent ?? '').toString() : category.allocated.toString())
     setIsEditing(false)
   }
 
@@ -147,7 +189,6 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
       transition={{ delay, duration: 0.4 }}
       className="card p-5 relative"
     >
-      {/* Pencil button */}
       <button
         onClick={() => setShowMenu(!showMenu)}
         className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-bg-neutral transition-colors group"
@@ -155,7 +196,6 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
         <Pencil className="w-4 h-4 text-content-tertiary group-hover:text-interactive-primary transition-colors" />
       </button>
 
-      {/* Dropdown menu */}
       {showMenu && !showDeleteConfirm && !isEditing && (
         <div className="absolute top-10 right-3 bg-white rounded-xl shadow-lg border border-border-neutral z-20 overflow-hidden">
           <button
@@ -175,25 +215,24 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
         </div>
       )}
 
-      {/* Delete confirmation overlay */}
       {showDeleteConfirm && (
         <div className="absolute inset-0 bg-white rounded-xl p-5 flex flex-col items-center justify-center z-10">
-          <p className="text-content-primary font-medium text-center mb-4">
-            Are you sure?
-          </p>
-          <p className="text-content-secondary text-sm text-center mb-4">
-            Delete "{category.name}" category
-          </p>
+          <p className="text-content-primary font-medium text-center mb-4">Are you sure?</p>
+          <p className="text-content-secondary text-sm text-center mb-4">Delete "{category.name}" category</p>
           <div className="flex gap-2 w-full">
             <button
               onClick={handleDelete}
-              className="flex-1 py-2 px-3 rounded-full font-semibold text-sm transition-colors"
+              disabled={pending}
+              className="flex-1 py-2 px-3 rounded-full font-semibold text-sm transition-colors disabled:opacity-50"
               style={{ backgroundColor: '#A8200D', color: '#FFFFFF' }}
             >
               Delete
             </button>
             <button
-              onClick={() => { setShowDeleteConfirm(false); setShowMenu(false); }}
+              onClick={() => {
+                setShowDeleteConfirm(false)
+                setShowMenu(false)
+              }}
               className="flex-1 py-2 px-3 rounded-full font-medium text-sm transition-colors"
               style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
@@ -203,7 +242,6 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
         </div>
       )}
 
-      {/* Edit overlay */}
       {isEditing && (
         <div className="absolute inset-0 bg-white rounded-xl p-4 flex flex-col z-10">
           <div className="mb-3">
@@ -217,7 +255,9 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
             />
           </div>
           <div className="mb-3">
-            <label className="block text-xs font-medium text-content-primary mb-1">Budget (€)</label>
+            <label className="block text-xs font-medium text-content-primary mb-1">
+              {category.type === 'percent' ? 'Budget (%)' : 'Budget (€)'}
+            </label>
             <input
               type="number"
               value={editBudget}
@@ -229,7 +269,8 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
           <div className="flex gap-2 mt-auto">
             <button
               onClick={handleSaveEdit}
-              className="flex-1 py-2 px-3 rounded-full font-semibold text-sm"
+              disabled={pending}
+              className="flex-1 py-2 px-3 rounded-full font-semibold text-sm disabled:opacity-50"
               style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Save
@@ -245,7 +286,7 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
       )}
 
       <div className="flex items-start justify-between mb-4 pr-6">
-        <div 
+        <div
           className="w-12 h-12 rounded-xl flex items-center justify-center"
           style={{ backgroundColor: `${category.color}15` }}
         >
@@ -259,7 +300,7 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
       </div>
 
       <h3 className="font-semibold text-content-primary mb-1">{category.name}</h3>
-      
+
       <div className="flex items-baseline gap-2 mb-4">
         <span className="text-xl font-bold" style={{ color: isOverBudget ? '#A8200D' : category.color }}>
           €{category.spent.toLocaleString()}
@@ -289,16 +330,18 @@ function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
   )
 }
 
-// Add Category Card Component - with inline form
-function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: string, budget: number) => void }) {
+function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: string, budget: number) => Promise<void> }) {
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState('')
   const [budget, setBudget] = useState('')
+  const [pending, setPending] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (name.trim() && budget) {
-      onAdd(name.trim(), Number(budget))
+      setPending(true)
+      await onAdd(name.trim(), Number(budget))
+      setPending(false)
       setName('')
       setBudget('')
       setIsEditing(false)
@@ -320,7 +363,6 @@ function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: s
       className="card p-5 min-h-[200px]"
     >
       {!isEditing ? (
-        // Add button state
         <button
           onClick={() => setIsEditing(true)}
           className="w-full h-full flex flex-col items-center justify-center border-2 border-dashed border-border-neutral 
@@ -335,13 +377,9 @@ function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: s
           </span>
         </button>
       ) : (
-        // Form state
         <form onSubmit={handleSubmit} className="h-full flex flex-col">
-          {/* Category Name */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-content-primary mb-2">
-              Category Name
-            </label>
+            <label className="block text-sm font-medium text-content-primary mb-2">Category Name</label>
             <input
               type="text"
               value={name}
@@ -354,11 +392,8 @@ function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: s
             />
           </div>
 
-          {/* Monthly Budget */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-content-primary mb-2">
-              Monthly Budget (€)
-            </label>
+            <label className="block text-sm font-medium text-content-primary mb-2">Monthly Budget (€)</label>
             <input
               type="number"
               value={budget}
@@ -371,16 +406,15 @@ function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: s
             />
           </div>
 
-          {/* Buttons */}
           <div className="flex flex-row gap-2 mt-4 pt-2">
             <button
               type="submit"
-              disabled={!name.trim() || !budget}
+              disabled={!name.trim() || !budget || pending}
               className="flex-1 py-2.5 px-4 rounded-full font-semibold text-sm transition-colors
                 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
-              Add
+              {pending ? 'Adding...' : 'Add'}
             </button>
             <button
               type="button"
@@ -397,8 +431,7 @@ function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: s
   )
 }
 
-// Alert Card Component
-function AlertCard({ alert }: { alert: Alert }) {
+function AlertCard({ alert }: { alert: UiAlert }) {
   const config = {
     warning: { icon: AlertTriangle, color: '#0E0F0C', bgColor: 'rgba(237, 200, 67, 0.2)' },
     danger: { icon: XCircle, color: '#A8200D', bgColor: 'rgba(168, 32, 13, 0.1)' },
@@ -409,10 +442,7 @@ function AlertCard({ alert }: { alert: Alert }) {
 
   return (
     <div className="card p-4 flex gap-4">
-      <div 
-        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ backgroundColor: bgColor }}
-      >
+      <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bgColor }}>
         <Icon className="w-5 h-5" style={{ color }} />
       </div>
       <div className="flex-1 min-w-0">
@@ -426,130 +456,171 @@ function AlertCard({ alert }: { alert: Alert }) {
   )
 }
 
-// Main Page
 export default function HomePage() {
-  // Load data from JSON and manage categories state
-  const [categories, setCategories] = useState<Category[]>(data.categories as Category[])
-  const alerts = data.alerts as Alert[]
-  const user = data.user
-
-  // Alerts state - show only 2 initially
+  const [categories, setCategories] = useState<UiCategory[]>([])
+  const [alerts, setAlerts] = useState<UiAlert[]>([])
+  const [summary, setSummary] = useState<Summary | null>(null)
   const [showAllAlerts, setShowAllAlerts] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
   const visibleAlerts = showAllAlerts ? alerts : alerts.slice(0, 2)
   const hasMoreAlerts = alerts.length > 2
+  const currency = summary?.currency || 'USD'
+  const alertCount = alerts.filter((a) => a.type === 'danger' || a.type === 'warning').length
 
-  // Handle adding a new category
-  const handleAddCategory = (name: string, budget: number) => {
-    const newCategory: Category = {
-      id: Date.now().toString(),
-      name,
-      icon: 'CreditCard',
-      allocated: budget,
-      spent: 0,
-      color: '#163300'
+  const topStats = useMemo(() => {
+    if (!summary) return []
+    const remaining = Math.max(summary.allocatedTotal - summary.spentTotal, 0)
+    const balance = summary.paycheck?.amount || 0
+    const updated = summary.paycheck?.updatedAt
+      ? `Updated ${new Date(summary.paycheck.updatedAt).toLocaleDateString()}`
+      : 'No paycheck saved'
+
+    return [
+      {
+        label: 'Total Balance',
+        value: formatCurrency(balance, currency),
+        change: updated,
+        changeType: 'neutral' as const,
+        icon: Wallet,
+      },
+      {
+        label: 'Monthly Spending',
+        value: formatCurrency(summary.spentTotal, currency),
+        change: `${formatCurrency(remaining, currency)} remaining`,
+        changeType: 'neutral' as const,
+        icon: TrendingUp,
+      },
+      {
+        label: 'Budget Used',
+        value: `${summary.budgetUsedPercent.toFixed(0)}%`,
+        change: summary.budgetUsedPercent > 100 ? 'Over budget' : 'On track',
+        changeType: summary.budgetUsedPercent > 100 ? ('negative' as const) : ('positive' as const),
+        icon: Target,
+      },
+      {
+        label: 'Alerts',
+        value: alertCount.toString(),
+        change: alertCount > 0 ? 'Needs attention' : 'All good',
+        changeType: alertCount > 0 ? ('negative' as const) : ('positive' as const),
+        icon: AlertTriangle,
+      },
+    ]
+  }, [alertCount, currency, summary])
+
+  useEffect(() => {
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function loadData() {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchSummary()
+      setSummary(data)
+      setCategories(decorateCategories(data.categories))
+      setAlerts(mapAlerts(data.alerts))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load data')
+    } finally {
+      setLoading(false)
     }
-    setCategories([...categories, newCategory])
   }
 
-  // Handle deleting a category
-  const handleDeleteCategory = (id: string) => {
-    setCategories(categories.filter(cat => cat.id !== id))
+  async function handleAddCategory(name: string, budget: number) {
+    setError(null)
+    try {
+      await createCategory({ name, amount: budget })
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add category')
+    }
   }
 
-  // Handle editing a category
-  const handleEditCategory = (updatedCategory: Category) => {
-    setCategories(categories.map(cat => 
-      cat.id === updatedCategory.id ? updatedCategory : cat
-    ))
+  async function handleDeleteCategory(id: string) {
+    setError(null)
+    try {
+      await deleteCategory(id)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete category')
+    }
   }
 
-  // Calculate stats from data
-  const totalSpent = categories.reduce((sum, cat) => sum + cat.spent, 0)
-  const totalBudget = categories.reduce((sum, cat) => sum + cat.allocated, 0)
-  const budgetUsedPercent = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0
-  const alertCount = alerts.filter(a => a.type === 'danger' || a.type === 'warning').length
+  async function handleEditCategory(updatedCategory: UiCategory) {
+    setError(null)
+    try {
+      if (updatedCategory.type === 'percent') {
+        await updateCategory(updatedCategory.id, {
+          name: updatedCategory.name,
+          percent: updatedCategory.percent ?? updatedCategory.allocated,
+          type: 'percent',
+        })
+      } else {
+        await updateCategory(updatedCategory.id, {
+          name: updatedCategory.name,
+          amount: updatedCategory.allocated,
+          type: 'fixed',
+        })
+      }
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update category')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-bg-screen">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-border-neutral">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center">
-            {/* Wise Logo */}
-            <img 
-              src="/wise-logo.svg" 
-              alt="Wise" 
-              className="h-5"
-            />
+            <img src="/wise-logo.svg" alt="Wise" className="h-5" />
           </div>
           <div className="flex items-center gap-3">
-            <button className="p-2 rounded-full bg-bg-neutral hover:bg-interactive-accent/20 transition-colors">
+            <button className="p-2 rounded-full bg-bg-neutral hover:bg-interactive-accent/20 transition-colors" onClick={loadData}>
               <Bell className="w-5 h-5 text-interactive-primary" />
             </button>
             <div className="w-10 h-10 rounded-full bg-interactive-accent flex items-center justify-center text-interactive-primary font-bold">
-              {user.name.charAt(0)}
+              U
             </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-16">
-        
-        {/* Hero / Welcome Section */}
         <section>
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
-          >
-            <h1 className="text-3xl font-semibold mb-2 text-[#163300]">
-              Good morning! 👋
-            </h1>
-            <p className="text-content-secondary">
-              Here's your financial overview for November 2024
-            </p>
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+            <h1 className="text-3xl font-semibold mb-2 text-[#163300]">Good morning! 👋</h1>
+            <p className="text-content-secondary">Here&apos;s your financial overview for this month.</p>
           </motion.div>
 
-          {/* Stats */}
+          {error && (
+            <div className="card p-4 border border-sentiment-negative/30 bg-sentiment-negative/5 text-sentiment-negative mb-4">
+              {error}
+            </div>
+          )}
+
+          {loading && <div className="text-content-secondary mb-4">Loading...</div>}
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard 
-              label="Total Balance" 
-              value={`€${user.balance.toLocaleString()}`} 
-              change="+12% from last month" 
-              changeType="positive" 
-              icon={Wallet} 
-              delay={0.1} 
-            />
-            <StatCard 
-              label="Monthly Spending" 
-              value={`€${user.monthlySpending.toLocaleString()}`} 
-              change={`€${user.budgetRemaining} remaining`} 
-              changeType="neutral" 
-              icon={TrendingUp} 
-              delay={0.2} 
-            />
-            <StatCard 
-              label="Budget Used" 
-              value={`${budgetUsedPercent}%`} 
-              change="On track" 
-              changeType="positive" 
-              icon={Target} 
-              delay={0.3} 
-            />
-            <StatCard 
-              label="Alerts" 
-              value={alertCount.toString()} 
-              change={alertCount > 0 ? "Needs attention" : "All good"} 
-              changeType={alertCount > 0 ? "negative" : "positive"} 
-              icon={AlertTriangle} 
-              delay={0.4} 
-            />
+            {topStats.map((stat, index) => (
+              <StatCard
+                key={stat.label}
+                label={stat.label}
+                value={stat.value}
+                change={stat.change}
+                changeType={stat.changeType}
+                icon={stat.icon}
+                delay={index * 0.1}
+              />
+            ))}
           </div>
         </section>
 
-        {/* Budget Categories */}
         <section>
-          <motion.h2 
+          <motion.h2
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
@@ -559,10 +630,10 @@ export default function HomePage() {
           </motion.h2>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {categories.map((category, index) => (
-              <BudgetCard 
-                key={category.id} 
-                category={category} 
-                delay={index * 0.1} 
+              <BudgetCard
+                key={category.id}
+                category={category}
+                delay={index * 0.1}
                 onDelete={handleDeleteCategory}
                 onEdit={handleEditCategory}
               />
@@ -571,9 +642,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Alerts */}
         <section>
-          <motion.h2 
+          <motion.h2
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
@@ -595,8 +665,7 @@ export default function HomePage() {
                 </motion.div>
               ))}
             </AnimatePresence>
-            
-            {/* See More Button */}
+
             {hasMoreAlerts && (
               <motion.button
                 initial={{ opacity: 0 }}
@@ -614,14 +683,10 @@ export default function HomePage() {
             )}
           </div>
         </section>
-
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-border-neutral py-8 mt-16">
-        <p className="text-center text-sm text-content-tertiary">
-          VaultX • Made for Wise Hackathon 2024
-        </p>
+        <p className="text-center text-sm text-content-tertiary">VaultX • Made for Wise Hackathon 2024</p>
       </footer>
     </div>
   )

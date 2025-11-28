@@ -1,57 +1,45 @@
-// Budget category type
-export interface BudgetCategory {
+export type CategoryType = 'fixed' | 'percent'
+
+export interface Category {
   id: string
   name: string
-  icon: string
+  type: CategoryType
+  amount?: number
+  percent?: number
   allocated: number
   spent: number
-  color: string
+  remaining: number
 }
 
-// Transaction type
-export interface Transaction {
-  id: string
-  amount: number
-  category: string
-  description: string
-  date: Date
-  type: 'income' | 'expense'
-}
-
-// Alert type
 export interface Alert {
   id: string
-  type: 'warning' | 'danger' | 'success' | 'info'
-  title: string
-  message: string
-  timestamp: Date
-  read: boolean
-}
-
-// Paycheck split configuration
-export interface PaycheckSplit {
-  id: string
-  category: string
-  percentage: number
-  amount: number
-}
-
-// User preferences
-export interface UserPreferences {
+  kind: 'near_budget' | 'over_budget'
+  severity: 'warning' | 'critical'
   currency: string
-  language: string
-  notifications: {
-    push: boolean
-    email: boolean
-    budgetAlerts: boolean
-    savingsGoals: boolean
-  }
+  categoryId: string
+  categoryName: string
+  allocated: number
+  spent: number
+  remaining: number
+  percentUsed: number
+  message: string
+  updatedAt: string
 }
 
-// API response types (for future backend integration)
-export interface ApiResponse<T> {
-  success: boolean
-  data: T
-  error?: string
+export interface Paycheck {
+  amount: number
+  currency: string
+  updatedAt: string
 }
 
+export interface Summary {
+  currency: string
+  paycheck: Paycheck | null
+  allocatedTotal: number
+  spentTotal: number
+  budgetUsedPercent: number
+  leftoverBudget: number
+  unallocated: number
+  alerts: Alert[]
+  categories: Category[]
+}
