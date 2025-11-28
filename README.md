@@ -1,44 +1,88 @@
-# VAULTX
+# VaultX 🏦
 
-WISE.budget backend: a tiny Express server that splits a paycheck into fixed amounts first, then percentages across the remaining balance. Data lives in memory so you can experiment without a database.
+**Smart Paycheck Splitting & Budget Alerts** — Built for Wise Hackathon
 
-## Run the server
+VaultX automatically splits your incoming paycheck into budget categories and alerts you when you're overspending. Take control of your finances effortlessly.
 
-```bash
-cd server
-npm start
-# server listens on http://localhost:4000
-```
+## ✨ Features
 
-## API
+- **Auto Paycheck Splitting** — When you receive your salary, it automatically gets distributed to your budget categories (rent, groceries, savings, etc.)
+- **Smart Budget Alerts** — Get notified when you exceed budgets or reach spending thresholds
+- **Real-time Tracking** — Monitor your spending across all categories
+- **Clean Dashboard** — Beautiful overview of your financial health
 
-- `GET /health` → quick status check.
-- Paycheck:
-  - `GET /paycheck` → see current paycheck + last allocation.
-  - `PUT /paycheck` → set/update paycheck and refresh allocation with stored categories. Body: `{ "amount": 3200, "currency": "EUR" }`.
-- Onboarding:
-  - `GET /onboarding` → returns `{ onboarding: { completed: boolean, updatedAt: string } }`.
-  - `PUT /onboarding` → set onboarding status. Body: `{ "completed": true }`.
-- Alerts:
-  - `GET /alerts` → budget alerts when a category is near budget (≥85%) or over budget. Response includes per-alert details and severity counts.
-- Categories:
-  - `GET /categories` → categories with `allocated`, `spent`, and `remaining` fields.
-  - `POST /categories` → add a category. Body: `{ "name": "Rent", "type": "fixed", "amount": 1200 }` or `{ "name": "Savings", "type": "percent", "percent": 25 }`.
-  - `PUT /categories/:id` → update a category (same body rules as POST).
-  - `DELETE /categories/:id` → remove a category.
-- Transactions:
-  - `GET /transactions?categoryId=<id>` → list transactions (optionally filtered by category).
-  - `POST /transactions` → add an expense. Body: `{ "categoryId": "groceries", "amount": 42.75, "note": "Market run" }`.
-- Allocation:
-  - `POST /allocate` → split a paycheck. Body: `{ "amount": 3000, "currency": "USD", "save": true }`. Set `save: true` to update the stored paycheck/allocation; omit or `false` to just preview. Optional `categories` array lets you preview with custom rules without persisting them.
-  - `GET /summary` → totals for allocated vs. spent plus per-category usage.
-
-Example allocation using the default rules that mirror the idea in the brief:
+## 🚀 Quick Start
 
 ```bash
-curl -X POST http://localhost:4000/allocate \
-  -H "Content-Type: application/json" \
-  -d '{ "amount": 3000, "save": true }'
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
 ```
 
-This splits $3,000 into $2,050 fixed (rent + subscriptions + groceries), then applies 30/20/50% to the remaining balance for savings, wants, and needs. Percentages must total 100% or less; fixed amounts cannot exceed the paycheck. Transactions are kept in memory for the current server run so the UI can show per-category spending.
+## 🛠 Tech Stack
+
+- **React 18** + **TypeScript** — Type-safe component development
+- **Vite** — Lightning fast build tool
+- **Tailwind CSS** — Utility-first styling
+- **Framer Motion** — Smooth animations
+- **Lucide Icons** — Beautiful icon set
+- **React Router** — Client-side routing
+
+## 📁 Project Structure
+
+```
+src/
+├── components/          # Reusable UI components
+│   ├── Layout.tsx       # Main layout with sidebar
+│   ├── BudgetCard.tsx   # Budget category card
+│   ├── AlertCard.tsx    # Alert/notification card
+│   ├── StatCard.tsx     # Statistics display card
+│   └── PaycheckSplitter.tsx  # Paycheck allocation UI
+├── pages/               # Route pages
+│   ├── Dashboard.tsx    # Main dashboard overview
+│   ├── Budget.tsx       # Budget management page
+│   ├── Alerts.tsx       # Alerts & notifications
+│   └── Settings.tsx     # User settings
+├── types/               # TypeScript type definitions
+├── App.tsx              # Main app with routing
+├── main.tsx             # Entry point
+└── index.css            # Global styles + Tailwind
+```
+
+## 🔗 Backend Integration
+
+The frontend is designed to connect with a backend that handles:
+- Bank account connections (via Wise API)
+- Automatic transaction categorization
+- Paycheck detection and splitting
+- Alert rule processing
+
+### API Endpoints (to be implemented)
+
+```typescript
+GET  /api/balance          // Get current balance
+GET  /api/transactions     // Get transaction history
+GET  /api/categories       // Get budget categories
+POST /api/categories       // Update category allocation
+GET  /api/alerts           // Get user alerts
+POST /api/paycheck/split   // Configure paycheck splitting
+```
+
+## 🎨 Design System
+
+- **Primary Color**: `#00e68a` (Vault Green)
+- **Background**: Dark theme with glassmorphism effects
+- **Typography**: Space Grotesk (headings) + DM Sans (body)
+
+## 👥 Team
+
+Built with ❤️ for Wise Hackathon 2024
+
+---
+
+**VaultX** — *Your money, automatically organized.*
