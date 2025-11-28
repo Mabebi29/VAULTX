@@ -16,7 +16,8 @@ import {
   CheckCircle,
   XCircle,
   ChevronDown,
-  X,
+  Pencil,
+  Trash2,
   LucideIcon
 } from 'lucide-react'
 import { useState } from 'react'
@@ -93,12 +94,18 @@ function StatCard({ label, value, change, changeType = 'neutral', icon: Icon, de
 }
 
 // Budget Card Component
-function BudgetCard({ category, delay = 0, onDelete }: {
+function BudgetCard({ category, delay = 0, onDelete, onEdit }: {
   category: Category
   delay?: number
   onDelete: (id: string) => void
+  onEdit: (category: Category) => void
 }) {
+  const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(category.name)
+  const [editBudget, setEditBudget] = useState(category.allocated.toString())
+  
   const Icon = iconMap[category.icon] || CreditCard
   const percentage = Math.min((category.spent / category.allocated) * 100, 100)
   const isOverBudget = category.spent > category.allocated
@@ -107,6 +114,29 @@ function BudgetCard({ category, delay = 0, onDelete }: {
   const handleDelete = () => {
     onDelete(category.id)
     setShowDeleteConfirm(false)
+    setShowMenu(false)
+  }
+
+  const handleEdit = () => {
+    setIsEditing(true)
+    setShowMenu(false)
+  }
+
+  const handleSaveEdit = () => {
+    if (editName.trim() && editBudget) {
+      onEdit({
+        ...category,
+        name: editName.trim(),
+        allocated: Number(editBudget)
+      })
+      setIsEditing(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditName(category.name)
+    setEditBudget(category.allocated.toString())
+    setIsEditing(false)
   }
 
   return (
@@ -117,19 +147,42 @@ function BudgetCard({ category, delay = 0, onDelete }: {
       transition={{ delay, duration: 0.4 }}
       className="card p-5 relative"
     >
-      {/* Delete button */}
+      {/* Pencil button */}
       <button
-        onClick={() => setShowDeleteConfirm(true)}
+        onClick={() => setShowMenu(!showMenu)}
         className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-bg-neutral transition-colors group"
       >
-        <X className="w-4 h-4 text-content-tertiary group-hover:text-sentiment-negative transition-colors" />
+        <Pencil className="w-4 h-4 text-content-tertiary group-hover:text-interactive-primary transition-colors" />
       </button>
+
+      {/* Dropdown menu */}
+      {showMenu && !showDeleteConfirm && !isEditing && (
+        <div className="absolute top-10 right-3 bg-white rounded-xl shadow-lg border border-border-neutral z-20 overflow-hidden">
+          <button
+            onClick={handleEdit}
+            className="w-full px-4 py-2.5 text-left text-sm font-medium text-content-primary hover:bg-bg-neutral flex items-center gap-2"
+          >
+            <Pencil className="w-4 h-4" />
+            Edit
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="w-full px-4 py-2.5 text-left text-sm font-medium text-sentiment-negative hover:bg-sentiment-negative/10 flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+        </div>
+      )}
 
       {/* Delete confirmation overlay */}
       {showDeleteConfirm && (
         <div className="absolute inset-0 bg-white rounded-xl p-5 flex flex-col items-center justify-center z-10">
           <p className="text-content-primary font-medium text-center mb-4">
-            Delete "{category.name}" category?
+            Are you sure?
+          </p>
+          <p className="text-content-secondary text-sm text-center mb-4">
+            Delete "{category.name}" category
           </p>
           <div className="flex gap-2 w-full">
             <button
@@ -140,9 +193,50 @@ function BudgetCard({ category, delay = 0, onDelete }: {
               Delete
             </button>
             <button
-              onClick={() => setShowDeleteConfirm(false)}
+              onClick={() => { setShowDeleteConfirm(false); setShowMenu(false); }}
               className="flex-1 py-2 px-3 rounded-full font-medium text-sm transition-colors"
               style={{ backgroundColor: '#9FE870', color: '#163300' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit overlay */}
+      {isEditing && (
+        <div className="absolute inset-0 bg-white rounded-xl p-4 flex flex-col z-10">
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-content-primary mb-1">Name</label>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
+                focus:border-interactive-primary focus:outline-none text-sm"
+            />
+          </div>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-content-primary mb-1">Budget (€)</label>
+            <input
+              type="number"
+              value={editBudget}
+              onChange={(e) => setEditBudget(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
+                focus:border-interactive-primary focus:outline-none text-sm"
+            />
+          </div>
+          <div className="flex gap-2 mt-auto">
+            <button
+              onClick={handleSaveEdit}
+              className="flex-1 py-2 px-3 rounded-full font-semibold text-sm"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
+            >
+              Save
+            </button>
+            <button
+              onClick={handleCancelEdit}
+              className="flex-1 py-2 px-3 rounded-full font-medium text-sm border border-border-neutral"
             >
               Cancel
             </button>
@@ -362,6 +456,13 @@ export default function HomePage() {
     setCategories(categories.filter(cat => cat.id !== id))
   }
 
+  // Handle editing a category
+  const handleEditCategory = (updatedCategory: Category) => {
+    setCategories(categories.map(cat => 
+      cat.id === updatedCategory.id ? updatedCategory : cat
+    ))
+  }
+
   // Calculate stats from data
   const totalSpent = categories.reduce((sum, cat) => sum + cat.spent, 0)
   const totalBudget = categories.reduce((sum, cat) => sum + cat.allocated, 0)
@@ -463,6 +564,7 @@ export default function HomePage() {
                 category={category} 
                 delay={index * 0.1} 
                 onDelete={handleDeleteCategory}
+                onEdit={handleEditCategory}
               />
             ))}
             <AddCategoryCard delay={categories.length * 0.1} onAdd={handleAddCategory} />
