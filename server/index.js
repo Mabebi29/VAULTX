@@ -11,21 +11,50 @@ app.use(morgan('dev'));
 
 const store = {
   currency: 'USD',
+  paycheck: { amount: 3000, currency: 'USD', updatedAt: new Date().toISOString() },
   categories: [
     { id: 'rent', name: 'Rent', type: 'fixed', amount: 1500 },
     { id: 'subscriptions', name: 'Subscriptions', type: 'fixed', amount: 100 },
     { id: 'savings', name: 'Savings', type: 'percent', percent: 30 },
     { id: 'wants', name: 'Wants', type: 'percent', percent: 20 },
-    { id: 'needs', name: 'Needs', type: 'percent', percent: 50 }
-  ]
+    { id: 'needs', name: 'Needs', type: 'percent', percent: 50 },
+    { id: 'groceries', name: 'Groceries', type: 'fixed', amount: 450 }
+  ],
+  transactions: [],
+  lastAllocation: null
 };
+
+store.lastAllocation = initializeAllocation();
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/paycheck', (_req, res) => {
+  res.json({ paycheck: store.paycheck, allocation: store.lastAllocation });
+});
+
+app.put('/paycheck', (req, res) => {
+  const amount = toNumber(req.body.amount);
+  const currency = req.body.currency || store.currency;
+
+  const allocation = calculateAllocation(amount, store.categories, currency);
+  if (allocation.error) {
+    return res.status(400).json({ error: allocation.error });
+  }
+
+  store.paycheck = { amount: allocation.grossIncome, currency, updatedAt: new Date().toISOString() };
+  store.lastAllocation = { ...allocation, categories: store.categories };
+
+  res.json({ paycheck: store.paycheck, allocation: store.lastAllocation });
+});
+
 app.get('/categories', (_req, res) => {
-  res.json({ currency: store.currency, categories: store.categories });
+  res.json({
+    currency: store.lastAllocation?.currency || store.currency,
+    paycheck: store.paycheck,
+    categories: categoriesWithUsage()
+  });
 });
 
 app.post('/categories', (req, res) => {
@@ -38,9 +67,16 @@ app.post('/categories', (req, res) => {
     return res.status(400).json({ error: 'Percentage categories cannot exceed 100% in total.' });
   }
 
-  const id = generateId(category.name);
-  store.categories.push({ ...category, id });
-  res.status(201).json({ category: { ...category, id } });
+  const nextCategory = { ...category, id: generateId(category.name) };
+  const nextCategories = [...store.categories, nextCategory];
+
+  const allocation = refreshAllocationForCategories(nextCategories);
+  if (allocation && allocation.error) {
+    return res.status(400).json({ error: allocation.error });
+  }
+
+  store.categories = nextCategories;
+  res.status(201).json({ category: nextCategory, allocation: store.lastAllocation });
 });
 
 app.put('/categories/:id', (req, res) => {
@@ -59,8 +95,18 @@ app.put('/categories/:id', (req, res) => {
     return res.status(400).json({ error: 'Percentage categories cannot exceed 100% in total.' });
   }
 
-  store.categories[index] = { ...current, ...category };
-  res.json({ category: store.categories[index] });
+  const updatedCategory = { ...current, ...category };
+  const nextCategories = store.categories.map((cat) =>
+    cat.id === updatedCategory.id ? updatedCategory : cat
+  );
+
+  const allocation = refreshAllocationForCategories(nextCategories);
+  if (allocation && allocation.error) {
+    return res.status(400).json({ error: allocation.error });
+  }
+
+  store.categories[index] = updatedCategory;
+  res.json({ category: store.categories[index], allocation: store.lastAllocation });
 });
 
 app.delete('/categories/:id', (req, res) => {
@@ -69,15 +115,56 @@ app.delete('/categories/:id', (req, res) => {
     return res.status(404).json({ error: 'Category not found.' });
   }
 
+  const nextCategories = store.categories.filter((cat) => cat.id !== req.params.id);
+  const allocation = refreshAllocationForCategories(nextCategories);
+  if (allocation && allocation.error) {
+    return res.status(400).json({ error: allocation.error });
+  }
+
   store.categories.splice(index, 1);
   res.status(204).send();
 });
 
+app.get('/transactions', (req, res) => {
+  const { categoryId } = req.query;
+  const transactions = categoryId
+    ? store.transactions.filter((txn) => txn.categoryId === categoryId)
+    : store.transactions;
+
+  res.json({ transactions });
+});
+
+app.post('/transactions', (req, res) => {
+  const amount = toNumber(req.body.amount);
+  const categoryId = req.body.categoryId;
+  const currency = req.body.currency || store.lastAllocation?.currency || store.currency;
+
+  if (!isValidMoney(amount) || amount <= 0) {
+    return res.status(400).json({ error: 'A positive numeric amount is required.' });
+  }
+
+  const category = store.categories.find((cat) => cat.id === categoryId);
+  if (!category) {
+    return res.status(400).json({ error: 'Valid categoryId is required for a transaction.' });
+  }
+
+  const transaction = {
+    id: generateId('txn'),
+    categoryId,
+    amount: roundMoney(amount),
+    currency,
+    note: typeof req.body.note === 'string' ? req.body.note : undefined,
+    occurredAt: req.body.occurredAt || new Date().toISOString()
+  };
+
+  store.transactions.push(transaction);
+  const categoryUsage = categoriesWithUsage().find((cat) => cat.id === categoryId);
+
+  res.status(201).json({ transaction, category: categoryUsage });
+});
+
 app.post('/allocate', (req, res) => {
   const amount = toNumber(req.body.amount);
-  if (!isValidMoney(amount)) {
-    return res.status(400).json({ error: 'A numeric paycheck amount is required.' });
-  }
 
   const sourceCategories = Array.isArray(req.body.categories) && req.body.categories.length
     ? normalizeCategories(req.body.categories)
@@ -92,29 +179,65 @@ app.post('/allocate', (req, res) => {
     return res.status(400).json({ error: sourceCategories.error });
   }
 
-  const { allocations, fixedTotal, variableTotal } = buildAllocations(amount, sourceCategories);
-  if (!allocations) {
-    return res.status(400).json({ error: 'Fixed amounts exceed the paycheck amount.' });
+  const allocation = calculateAllocation(amount, sourceCategories, req.body.currency || store.currency);
+  if (allocation.error) {
+    return res.status(400).json({ error: allocation.error });
   }
 
-  const remainingAfterFixed = roundMoney(amount - fixedTotal);
-  const leftover = roundMoney(remainingAfterFixed - variableTotal);
+  if (req.body.save) {
+    store.paycheck = {
+      amount: allocation.grossIncome,
+      currency: allocation.currency,
+      updatedAt: new Date().toISOString()
+    };
+    store.lastAllocation = { ...allocation, categories: sourceCategories };
+  }
+
+  res.json(allocation);
+});
+
+app.get('/summary', (_req, res) => {
+  const categories = categoriesWithUsage();
+  const allocatedTotal = roundMoney(
+    categories.reduce((total, cat) => total + (cat.allocated || 0), 0)
+  );
+  const spentTotal = roundMoney(
+    categories.reduce((total, cat) => total + (cat.spent || 0), 0)
+  );
 
   res.json({
-    currency: req.body.currency || store.currency,
-    grossIncome: roundMoney(amount),
-    fixedTotal,
-    percentageTotal: percentageTotal(sourceCategories),
-    remainingAfterFixed,
-    totalAllocated: roundMoney(fixedTotal + variableTotal),
-    leftover,
-    allocations
+    currency: store.lastAllocation?.currency || store.currency,
+    paycheck: store.paycheck,
+    allocatedTotal,
+    spentTotal,
+    budgetUsedPercent: allocatedTotal ? roundMoney((spentTotal / allocatedTotal) * 100) : 0,
+    leftoverBudget: roundMoney(allocatedTotal - spentTotal),
+    unallocated: store.lastAllocation?.leftover ?? 0,
+    categories
   });
 });
 
 app.listen(PORT, () => {
   console.log(`WISE.budget backend running on http://localhost:${PORT}`);
 });
+
+function initializeAllocation() {
+  const allocation = calculateAllocation(store.paycheck.amount, store.categories, store.paycheck.currency);
+  if (!allocation.error) {
+    return { ...allocation, categories: store.categories };
+  }
+  return null;
+}
+
+function refreshAllocationForCategories(nextCategories) {
+  if (!store.paycheck) return null;
+  const allocation = calculateAllocation(store.paycheck.amount, nextCategories, store.paycheck.currency);
+  if (allocation.error) {
+    return { error: allocation.error };
+  }
+  store.lastAllocation = { ...allocation, categories: nextCategories };
+  return store.lastAllocation;
+}
 
 function parseCategory(payload, fallback = {}) {
   const name = typeof payload.name === 'string' ? payload.name.trim() : fallback.name;
@@ -161,12 +284,69 @@ function normalizeCategories(list) {
   return normalized;
 }
 
+function categoriesWithUsage() {
+  const spendById = spendByCategory();
+  const allocationMap = (store.lastAllocation?.allocations || []).reduce((acc, alloc) => {
+    acc[alloc.id] = alloc.allocated;
+    return acc;
+  }, {});
+
+  return store.categories.map((cat) => {
+    const allocated = allocationMap[cat.id] ?? (cat.type === 'fixed' ? cat.amount : 0);
+    const spent = spendById[cat.id] || 0;
+
+    return {
+      ...cat,
+      allocated,
+      spent,
+      remaining: roundMoney(allocated - spent)
+    };
+  });
+}
+
+function spendByCategory() {
+  return store.transactions.reduce((acc, txn) => {
+    acc[txn.categoryId] = roundMoney((acc[txn.categoryId] || 0) + txn.amount);
+    return acc;
+  }, {});
+}
+
 function canSupportPercent(incomingPercent, excludeId) {
   const percentSum = store.categories
     .filter((cat) => cat.type === 'percent' && cat.id !== excludeId)
     .reduce((total, cat) => total + cat.percent, 0);
 
   return percentSum + (incomingPercent || 0) <= 100;
+}
+
+function calculateAllocation(amount, categories, currency = store.currency) {
+  if (!isValidMoney(amount)) {
+    return { error: 'A numeric paycheck amount is required.' };
+  }
+
+  const percentTotal = percentageTotal(categories);
+  if (percentTotal > 100) {
+    return { error: 'Percentage categories cannot exceed 100%.' };
+  }
+
+  const { allocations, fixedTotal, variableTotal } = buildAllocations(amount, categories);
+  if (!allocations) {
+    return { error: 'Fixed amounts exceed the paycheck amount.' };
+  }
+
+  const remainingAfterFixed = roundMoney(amount - fixedTotal);
+  const leftover = roundMoney(remainingAfterFixed - variableTotal);
+
+  return {
+    currency,
+    grossIncome: roundMoney(amount),
+    fixedTotal,
+    percentageTotal: percentTotal,
+    remainingAfterFixed,
+    totalAllocated: roundMoney(fixedTotal + variableTotal),
+    leftover,
+    allocations
+  };
 }
 
 function percentageTotal(categories) {
