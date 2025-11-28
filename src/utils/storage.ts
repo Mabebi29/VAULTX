@@ -1,4 +1,4 @@
-import { UserPreferences, Transaction } from '../types'
+import { UserPreferences, Transaction, SpendingCategory } from '../types'
 
 export interface OnboardingData {
   completed: boolean
@@ -11,6 +11,7 @@ export interface OnboardingData {
     amount: number
     percentage: number
     isCustom?: boolean
+    spendingCategories?: SpendingCategory[]
   }>
   completedAt: string
 }
@@ -92,6 +93,7 @@ export const getOnboardingCategories = (): Array<{
   allocated: number
   spent: number
   color: string
+  spendingCategories: SpendingCategory[]
 }> | null => {
   const onboarding = getOnboardingData()
   if (!onboarding || !onboarding.categories) return null
@@ -109,8 +111,18 @@ export const getOnboardingCategories = (): Array<{
   
   // Calculate spent from transactions (only if currency matches)
   const transactions = currentCurrency === onboardingCurrency ? getCurrentMonthTransactions() : []
+  const defaultSpendingMap: Record<string, SpendingCategory[]> = {
+    essentials: ['bills', 'groceries', 'transport'],
+    'non-essentials': ['eating_out', 'entertainment', 'shopping', 'subscriptions', 'health', 'education', 'family_and_friends'],
+    uncategorized: ['expenses', 'general', 'holiday', 'income', 'pets']
+  }
   
   return onboarding.categories.map(cat => {
+    const normalizedName = cat.name?.toLowerCase() || ''
+    const spendingCategories = cat.spendingCategories
+      || defaultSpendingMap[normalizedName]
+      || []
+
     const spent = currentCurrency === onboardingCurrency 
       ? transactions
           .filter(t => t.category === cat.id && t.type === 'expense')
@@ -123,7 +135,8 @@ export const getOnboardingCategories = (): Array<{
       icon: cat.icon || 'CreditCard',
       allocated: cat.amount,
       spent: spent,
-      color: '#163300' // Default color
+      color: '#163300', // Default color
+      spendingCategories
     }
   })
 }

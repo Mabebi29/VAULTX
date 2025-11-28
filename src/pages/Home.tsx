@@ -22,7 +22,7 @@ import {
   RotateCcw,
   LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck, addTransaction as addTransactionAPI } from '../api'
 import type { Alert as ApiAlert, Category, Summary, SpendingCategory } from '../types'
 import { SPENDING_CATEGORIES } from '../types'
@@ -914,6 +914,7 @@ export default function HomePage() {
   const [categories, setCategories] = useState<UiCategory[]>([])
   const [alerts, setAlerts] = useState<UiAlert[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
+  const summaryRef = useRef<Summary | null>(null)
   const [showAllAlerts, setShowAllAlerts] = useState(false)
   const [showDevTools, setShowDevTools] = useState(false)
   
@@ -1038,12 +1039,16 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    summaryRef.current = summary
+  }, [summary])
+
+  useEffect(() => {
     loadData()
     
     // Listen for storage changes (when transactions are added/deleted or onboarding is reset)
     const handleStorageChange = () => {
       // Reload data when storage changes
-      if (!summary) {
+      if (!summaryRef.current) {
         // If using onboarding data, reload it
         loadOnboardingData()
       } else {
@@ -1084,7 +1089,7 @@ export default function HomePage() {
             spent: cat.spent,
             remaining: cat.allocated - cat.spent,
             percent: percent,
-            spendingCategories: [] // Onboarding categories don't have spending categories assigned yet
+            spendingCategories: cat.spendingCategories || []
           }
         })
         
