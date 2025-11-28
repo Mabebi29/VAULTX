@@ -50,3 +50,10 @@ export function updatePaycheck(amount: number, currency?: string) {
     body: JSON.stringify({ amount, currency }),
   })
 }
+
+export function addTransaction(payload: { categoryId: string; amount: number; note?: string; currency?: string }) {
+  return request<{ transaction: { id: string; categoryId: string; amount: number; currency: string; note?: string; occurredAt: string }; category: Category }>('/transactions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}

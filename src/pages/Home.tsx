@@ -23,7 +23,7 @@ import {
   LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck } from '../api'
+import { fetchSummary, createCategory, updateCategory, deleteCategory, updatePaycheck, addTransaction as addTransactionAPI } from '../api'
 import type { Alert as ApiAlert, Category, Summary, SpendingCategory } from '../types'
 import { SPENDING_CATEGORIES } from '../types'
 import { 
@@ -1249,47 +1249,64 @@ export default function HomePage() {
   }
 
   // Handle adding transaction (dev only)
-  const handleAddTransaction = (categoryId: string, amount: number, description: string) => {
-    saveTransaction({
-      category: categoryId,
-      amount,
-      description,
-      type: 'expense'
-    })
-    
-    // Recalculate all spending from transactions
-    const updatedCategories = categories.map(cat => {
-      const spent = calculateCategorySpending(cat.id)
-      return {
-        ...cat,
-        spent,
-        remaining: cat.allocated - spent
+  const handleAddTransaction = async (categoryId: string, amount: number, description: string) => {
+    if (summary) {
+      // Using API - call the API endpoint
+      try {
+        await addTransactionAPI({
+          categoryId,
+          amount,
+          note: description,
+          currency: currency
+        })
+        // Reload data from API to get updated categories
+        await loadData()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add transaction')
       }
-    })
-    setCategories(updatedCategories)
-    
-    const monthlySpending = calculateMonthlySpending()
-    const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
-    const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
-    
-    setUserData(prev => ({
-      ...prev,
-      monthlySpending,
-      budgetRemaining: totalBudget - totalSpent
-    }))
-    
-    // Regenerate alerts
-    const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
-    setAlerts(generatedAlerts.map(alert => ({
-      id: alert.id,
-      type: alert.type,
-      title: alert.title,
-      message: alert.message,
-      time: alert.time
-    })))
-    
-    // Trigger a custom event to update the UI
-    window.dispatchEvent(new Event('vaultx-storage-change'))
+    } else {
+      // Using onboarding data - save to localStorage
+      saveTransaction({
+        category: categoryId,
+        amount,
+        description,
+        type: 'expense'
+      })
+      
+      // Recalculate all spending from transactions
+      const updatedCategories = categories.map(cat => {
+        const spent = calculateCategorySpending(cat.id)
+        return {
+          ...cat,
+          spent,
+          remaining: cat.allocated - spent
+        }
+      })
+      setCategories(updatedCategories)
+      
+      const monthlySpending = calculateMonthlySpending()
+      const totalBudget = updatedCategories.reduce((sum, cat) => sum + cat.allocated, 0)
+      const totalSpent = updatedCategories.reduce((sum, cat) => sum + cat.spent, 0)
+      
+      setUserData(prev => ({
+        ...prev,
+        monthlySpending,
+        budgetRemaining: totalBudget - totalSpent
+      }))
+      
+      // Regenerate alerts
+      const generatedAlerts = generateAlerts(updatedCategories, currencySymbol)
+      setAlerts(generatedAlerts.map(alert => ({
+        id: alert.id,
+        type: alert.type,
+        title: alert.title,
+        message: alert.message,
+        time: alert.time
+      })))
+      
+      // Trigger a custom event to update the UI
+      window.dispatchEvent(new Event('vaultx-storage-change'))
+    }
   }
 
   return (
