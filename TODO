@@ -1,0 +1,2 @@
+- Categories are not persistant, probably because backend does not support them
+- Add POST reassignTransaction which would 

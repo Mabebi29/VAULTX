@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Content */
+  --content-primary: #0E0F0C;
+  --content-secondary: #454745;
+  --content-tertiary: #6A6C6A;
+  --content-link: #163300;
+  
+  /* Interactive */
+  --interactive-primary: #163300;
+  --interactive-accent: #9FE870;
+  --interactive-secondary: #868685;
+  
+  /* Background */
+  --bg-screen: #FFFFFF;
+  --bg-neutral: rgba(22, 51, 0, 0.08);
+  
+  /* Border */
+  --border-neutral: rgba(14, 15, 12, 0.12);
+  
+  /* Sentiment */
+  --sentiment-negative: #A8200D;
+  --sentiment-positive: #2F5711;
+  --sentiment-warning: #EDC843;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #FFFFFF;
+  min-height: 100vh;
+  color: #0E0F0C;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F5F5F5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #868685;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6A6C6A;
+}
+
+@layer utilities {
+  .card {
+    background: #FFFFFF;
+    border: 1px solid rgba(14, 15, 12, 0.12);
+    border-radius: 12px;
+  }
+  
+  .card-elevated {
+    background: #FFFFFF;
+    border: 1px solid rgba(14, 15, 12, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(14, 15, 12, 0.08);
+  }
+
+  .bg-neutral {
+    background: rgba(22, 51, 0, 0.08);
+  }
+
+  .btn-primary {
+    background-color: #9FE870;
+    color: #163300;
+    font-weight: 600;
+    padding: 12px 24px;
+    border-radius: 100px;
+    transition: all 0.2s ease;
+  }
+
+  .btn-primary:hover {
+    background-color: #8ed85f;
+  }
+
+  .btn-secondary {
+    background-color: transparent;
+    color: #163300;
+    font-weight: 600;
+    padding: 12px 24px;
+    border-radius: 100px;
+    border: 1px solid rgba(14, 15, 12, 0.12);
+    transition: all 0.2s ease;
+  }
+
+  .btn-secondary:hover {
+    background-color: rgba(22, 51, 0, 0.08);
+  }
+
+  .link {
+    color: #163300;
+    text-decoration: underline;
+    font-weight: 600;
+  }
+
+  .link:hover {
+    color: #0E0F0C;
+  }
+}
