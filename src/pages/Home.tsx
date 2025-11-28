@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Wallet, 
   TrendingUp, 
@@ -11,14 +11,51 @@ import {
   Gamepad2,
   PiggyBank,
   Bell,
-  Zap,
   CreditCard,
   Plus,
-  Trash2,
   CheckCircle,
-  XCircle
+  XCircle,
+  ChevronDown,
+  X,
+  LucideIcon
 } from 'lucide-react'
 import { useState } from 'react'
+
+// Import data from JSON
+import data from '../data/categories.json'
+
+// Icon mapping - maps string names to actual icon components
+const iconMap: Record<string, LucideIcon> = {
+  ShoppingCart,
+  Home,
+  Car,
+  Utensils,
+  Gamepad2,
+  PiggyBank,
+  CreditCard,
+  Wallet,
+  Bell,
+}
+
+// Types
+type AlertType = 'warning' | 'danger' | 'success' | 'info'
+
+interface Category {
+  id: string
+  name: string
+  icon: string
+  allocated: number
+  spent: number
+  color: string
+}
+
+interface Alert {
+  id: string
+  type: AlertType
+  title: string
+  message: string
+  time: string
+}
 
 // Stat Card Component
 function StatCard({ label, value, change, changeType = 'neutral', icon: Icon, delay = 0 }: {
@@ -26,7 +63,7 @@ function StatCard({ label, value, change, changeType = 'neutral', icon: Icon, de
   value: string
   change?: string
   changeType?: 'positive' | 'negative' | 'neutral'
-  icon: typeof Wallet
+  icon: LucideIcon
   delay?: number
 }) {
   const changeColors = {
@@ -56,17 +93,21 @@ function StatCard({ label, value, change, changeType = 'neutral', icon: Icon, de
 }
 
 // Budget Card Component
-function BudgetCard({ category, icon: Icon, allocated, spent, color, delay = 0 }: {
-  category: string
-  icon: typeof Wallet
-  allocated: number
-  spent: number
-  color: string
+function BudgetCard({ category, delay = 0, onDelete }: {
+  category: Category
   delay?: number
+  onDelete: (id: string) => void
 }) {
-  const percentage = Math.min((spent / allocated) * 100, 100)
-  const isOverBudget = spent > allocated
-  const remaining = allocated - spent
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const Icon = iconMap[category.icon] || CreditCard
+  const percentage = Math.min((category.spent / category.allocated) * 100, 100)
+  const isOverBudget = category.spent > category.allocated
+  const remaining = category.allocated - category.spent
+
+  const handleDelete = () => {
+    onDelete(category.id)
+    setShowDeleteConfirm(false)
+  }
 
   return (
     <motion.div
@@ -74,14 +115,47 @@ function BudgetCard({ category, icon: Icon, allocated, spent, color, delay = 0 }
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ delay, duration: 0.4 }}
-      className="card p-5"
+      className="card p-5 relative"
     >
-      <div className="flex items-start justify-between mb-4">
+      {/* Delete button */}
+      <button
+        onClick={() => setShowDeleteConfirm(true)}
+        className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-bg-neutral transition-colors group"
+      >
+        <X className="w-4 h-4 text-content-tertiary group-hover:text-sentiment-negative transition-colors" />
+      </button>
+
+      {/* Delete confirmation overlay */}
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 bg-white rounded-xl p-5 flex flex-col items-center justify-center z-10">
+          <p className="text-content-primary font-medium text-center mb-4">
+            Delete "{category.name}" category?
+          </p>
+          <div className="flex gap-2 w-full">
+            <button
+              onClick={handleDelete}
+              className="flex-1 py-2 px-3 rounded-full font-semibold text-sm transition-colors"
+              style={{ backgroundColor: '#A8200D', color: '#FFFFFF' }}
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="flex-1 py-2 px-3 rounded-full font-medium text-sm transition-colors"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-start justify-between mb-4 pr-6">
         <div 
           className="w-12 h-12 rounded-xl flex items-center justify-center"
-          style={{ backgroundColor: `${color}15` }}
+          style={{ backgroundColor: `${category.color}15` }}
         >
-          <Icon className="w-6 h-6" style={{ color }} />
+          <Icon className="w-6 h-6" style={{ color: category.color }} />
         </div>
         {isOverBudget && (
           <span className="px-2 py-1 rounded-full text-xs font-semibold bg-sentiment-negative/10 text-sentiment-negative">
@@ -90,13 +164,13 @@ function BudgetCard({ category, icon: Icon, allocated, spent, color, delay = 0 }
         )}
       </div>
 
-      <h3 className="font-semibold text-content-primary mb-1">{category}</h3>
+      <h3 className="font-semibold text-content-primary mb-1">{category.name}</h3>
       
       <div className="flex items-baseline gap-2 mb-4">
-        <span className="text-xl font-bold" style={{ color: isOverBudget ? '#A8200D' : color }}>
-          €{spent.toLocaleString()}
+        <span className="text-xl font-bold" style={{ color: isOverBudget ? '#A8200D' : category.color }}>
+          €{category.spent.toLocaleString()}
         </span>
-        <span className="text-content-tertiary text-sm">/ €{allocated.toLocaleString()}</span>
+        <span className="text-content-tertiary text-sm">/ €{category.allocated.toLocaleString()}</span>
       </div>
 
       <div className="h-2 bg-bg-neutral rounded-full overflow-hidden">
@@ -106,7 +180,7 @@ function BudgetCard({ category, icon: Icon, allocated, spent, color, delay = 0 }
           viewport={{ once: true }}
           transition={{ delay: delay + 0.2, duration: 0.8 }}
           className="h-full rounded-full"
-          style={{ backgroundColor: isOverBudget ? '#A8200D' : color }}
+          style={{ backgroundColor: isOverBudget ? '#A8200D' : category.color }}
         />
       </div>
 
@@ -121,35 +195,26 @@ function BudgetCard({ category, icon: Icon, allocated, spent, color, delay = 0 }
   )
 }
 
-// Paycheck Splitter Component
-function PaycheckSplitter({ paycheckAmount }: { paycheckAmount: number }) {
-  const [splits, setSplits] = useState([
-    { id: '1', category: 'Rent', icon: Home, amount: 1200, percentage: 40 },
-    { id: '2', category: 'Groceries', icon: ShoppingCart, amount: 450, percentage: 15 },
-    { id: '3', category: 'Savings', icon: PiggyBank, amount: 600, percentage: 20 },
-    { id: '4', category: 'Bills', icon: CreditCard, amount: 300, percentage: 10 },
-    { id: '5', category: 'Entertainment', icon: Gamepad2, amount: 225, percentage: 7.5 },
-    { id: '6', category: 'Dining', icon: Utensils, amount: 225, percentage: 7.5 },
-  ])
+// Add Category Card Component - with inline form
+function AddCategoryCard({ delay = 0, onAdd }: { delay?: number; onAdd: (name: string, budget: number) => void }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [name, setName] = useState('')
+  const [budget, setBudget] = useState('')
 
-  const totalAllocated = splits.reduce((sum, s) => sum + s.amount, 0)
-  const remaining = paycheckAmount - totalAllocated
-
-  const updateSplit = (id: string, newPercentage: number) => {
-    setSplits(splits.map(s => 
-      s.id === id 
-        ? { ...s, percentage: newPercentage, amount: Math.round(paycheckAmount * newPercentage / 100) }
-        : s
-    ))
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (name.trim() && budget) {
+      onAdd(name.trim(), Number(budget))
+      setName('')
+      setBudget('')
+      setIsEditing(false)
+    }
   }
 
-  const removeSplit = (id: string) => {
-    setSplits(splits.filter(s => s.id !== id))
-  }
-
-  const addSplit = () => {
-    const newId = Date.now().toString()
-    setSplits([...splits, { id: newId, category: 'Transport', icon: Car, amount: 0, percentage: 0 }])
+  const handleCancel = () => {
+    setName('')
+    setBudget('')
+    setIsEditing(false)
   }
 
   return (
@@ -157,105 +222,96 @@ function PaycheckSplitter({ paycheckAmount }: { paycheckAmount: number }) {
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      className="card-elevated p-6"
+      transition={{ delay, duration: 0.4 }}
+      className="card p-5 min-h-[200px]"
     >
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-interactive-accent/20 flex items-center justify-center">
-          <Zap className="w-5 h-5 text-interactive-primary" />
-        </div>
-        <div>
-          <h3 className="font-semibold text-content-primary">Paycheck Splitter</h3>
-          <p className="text-sm text-content-secondary">Auto-allocate your €{paycheckAmount.toLocaleString()} paycheck</p>
-        </div>
-      </div>
-
-      <div className="space-y-4 mb-6">
-        {splits.map((split) => {
-          const Icon = split.icon
-          return (
-            <div key={split.id} className="group">
-              <div className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-lg bg-bg-neutral flex items-center justify-center">
-                  <Icon className="w-4 h-4 text-interactive-primary" />
-                </div>
-                
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-content-primary">{split.category}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-interactive-primary">
-                        €{split.amount.toLocaleString()}
-                      </span>
-                      <span className="text-xs text-content-tertiary">
-                        ({split.percentage}%)
-                      </span>
-                      <button 
-                        onClick={() => removeSplit(split.id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-sentiment-negative/10 rounded transition-all"
-                      >
-                        <Trash2 className="w-3 h-3 text-sentiment-negative" />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={split.percentage}
-                    onChange={(e) => updateSplit(split.id, Number(e.target.value))}
-                    className="w-full h-2 bg-bg-neutral rounded-full appearance-none cursor-pointer
-                      [&::-webkit-slider-thumb]:appearance-none
-                      [&::-webkit-slider-thumb]:w-4
-                      [&::-webkit-slider-thumb]:h-4
-                      [&::-webkit-slider-thumb]:rounded-full
-                      [&::-webkit-slider-thumb]:bg-interactive-accent
-                      [&::-webkit-slider-thumb]:border-2
-                      [&::-webkit-slider-thumb]:border-interactive-primary
-                      [&::-webkit-slider-thumb]:cursor-pointer"
-                  />
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <button
-        onClick={addSplit}
-        className="w-full py-3 border-2 border-dashed border-border-neutral rounded-xl text-content-secondary 
-          hover:border-interactive-primary hover:text-interactive-primary transition-colors flex items-center justify-center gap-2"
-      >
-        <Plus className="w-4 h-4" />
-        Add Category
-      </button>
-
-      <div className="mt-6 pt-6 border-t border-border-neutral">
-        <div className="flex items-center justify-between">
-          <span className="text-content-secondary">Remaining unallocated</span>
-          <span className={`font-semibold ${remaining >= 0 ? 'text-sentiment-positive' : 'text-sentiment-negative'}`}>
-            €{remaining.toLocaleString()}
+      {!isEditing ? (
+        // Add button state
+        <button
+          onClick={() => setIsEditing(true)}
+          className="w-full h-full flex flex-col items-center justify-center border-2 border-dashed border-border-neutral 
+            hover:border-interactive-primary rounded-xl py-8
+            hover:bg-bg-neutral transition-all duration-200 group"
+        >
+          <div className="w-12 h-12 rounded-xl bg-bg-neutral group-hover:bg-interactive-accent/20 flex items-center justify-center mb-4 transition-colors">
+            <Plus className="w-6 h-6 text-content-tertiary group-hover:text-interactive-primary transition-colors" />
+          </div>
+          <span className="font-semibold text-content-tertiary group-hover:text-interactive-primary transition-colors">
+            Add Category
           </span>
-        </div>
-      </div>
+        </button>
+      ) : (
+        // Form state
+        <form onSubmit={handleSubmit} className="h-full flex flex-col">
+          {/* Category Name */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-content-primary mb-2">
+              Category Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Subscriptions"
+              autoFocus
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
+                focus:border-interactive-primary focus:outline-none
+                text-content-primary placeholder:text-content-tertiary text-sm transition-all"
+            />
+          </div>
+
+          {/* Monthly Budget */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-content-primary mb-2">
+              Monthly Budget (€)
+            </label>
+            <input
+              type="number"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+              placeholder="100"
+              min="0"
+              className="w-full px-3 py-2 rounded-lg border border-border-neutral bg-bg-neutral
+                focus:border-interactive-primary focus:outline-none
+                text-content-primary placeholder:text-content-tertiary text-sm transition-all"
+            />
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-row gap-2 mt-4 pt-2">
+            <button
+              type="submit"
+              disabled={!name.trim() || !budget}
+              className="flex-1 py-2.5 px-4 rounded-full font-semibold text-sm transition-colors
+                disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
+            >
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="flex-1 py-2.5 px-4 rounded-full border border-border-neutral 
+                text-content-primary font-medium text-sm hover:bg-bg-neutral transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
     </motion.div>
   )
 }
 
 // Alert Card Component
-function AlertCard({ type, title, message, time }: {
-  type: 'warning' | 'danger' | 'success' | 'info'
-  title: string
-  message: string
-  time: string
-}) {
+function AlertCard({ alert }: { alert: Alert }) {
   const config = {
     warning: { icon: AlertTriangle, color: '#0E0F0C', bgColor: 'rgba(237, 200, 67, 0.2)' },
     danger: { icon: XCircle, color: '#A8200D', bgColor: 'rgba(168, 32, 13, 0.1)' },
     success: { icon: CheckCircle, color: '#2F5711', bgColor: 'rgba(47, 87, 17, 0.1)' },
     info: { icon: TrendingUp, color: '#163300', bgColor: 'rgba(22, 51, 0, 0.08)' },
   }
-  const { icon: Icon, color, bgColor } = config[type]
+  const { icon: Icon, color, bgColor } = config[alert.type]
 
   return (
     <div className="card p-4 flex gap-4">
@@ -267,33 +323,51 @@ function AlertCard({ type, title, message, time }: {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <h4 className="font-semibold text-sm text-content-primary">{title}</h4>
-          <span className="text-xs text-content-tertiary flex-shrink-0">{time}</span>
+          <h4 className="font-semibold text-sm text-content-primary">{alert.title}</h4>
+          <span className="text-xs text-content-tertiary flex-shrink-0">{alert.time}</span>
         </div>
-        <p className="text-sm text-content-secondary mt-1">{message}</p>
+        <p className="text-sm text-content-secondary mt-1">{alert.message}</p>
       </div>
     </div>
   )
 }
 
-// Data
-const budgetCategories = [
-  { category: 'Groceries', icon: ShoppingCart, allocated: 450, spent: 380, color: '#2F5711' },
-  { category: 'Rent', icon: Home, allocated: 1200, spent: 1200, color: '#163300' },
-  { category: 'Transport', icon: Car, allocated: 200, spent: 245, color: '#A8200D' },
-  { category: 'Dining Out', icon: Utensils, allocated: 150, spent: 89, color: '#163300' },
-  { category: 'Entertainment', icon: Gamepad2, allocated: 100, spent: 45, color: '#163300' },
-  { category: 'Savings', icon: PiggyBank, allocated: 500, spent: 500, color: '#2F5711' },
-]
-
-const alerts = [
-  { type: 'danger' as const, title: 'Transport budget exceeded', message: 'You\'ve spent €45 more than your allocated transport budget.', time: '2h ago' },
-  { type: 'success' as const, title: 'Savings goal reached', message: 'Your monthly savings target of €500 has been met!', time: '1d ago' },
-  { type: 'info' as const, title: 'Paycheck received', message: 'Your salary of €3,000 has been split into your budget categories.', time: '3d ago' },
-]
-
 // Main Page
 export default function HomePage() {
+  // Load data from JSON and manage categories state
+  const [categories, setCategories] = useState<Category[]>(data.categories as Category[])
+  const alerts = data.alerts as Alert[]
+  const user = data.user
+
+  // Alerts state - show only 2 initially
+  const [showAllAlerts, setShowAllAlerts] = useState(false)
+  const visibleAlerts = showAllAlerts ? alerts : alerts.slice(0, 2)
+  const hasMoreAlerts = alerts.length > 2
+
+  // Handle adding a new category
+  const handleAddCategory = (name: string, budget: number) => {
+    const newCategory: Category = {
+      id: Date.now().toString(),
+      name,
+      icon: 'CreditCard',
+      allocated: budget,
+      spent: 0,
+      color: '#163300'
+    }
+    setCategories([...categories, newCategory])
+  }
+
+  // Handle deleting a category
+  const handleDeleteCategory = (id: string) => {
+    setCategories(categories.filter(cat => cat.id !== id))
+  }
+
+  // Calculate stats from data
+  const totalSpent = categories.reduce((sum, cat) => sum + cat.spent, 0)
+  const totalBudget = categories.reduce((sum, cat) => sum + cat.allocated, 0)
+  const budgetUsedPercent = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0
+  const alertCount = alerts.filter(a => a.type === 'danger' || a.type === 'warning').length
+
   return (
     <div className="min-h-screen bg-bg-screen">
       {/* Header */}
@@ -310,7 +384,7 @@ export default function HomePage() {
               <Bell className="w-5 h-5 text-interactive-primary" />
             </button>
             <div className="w-10 h-10 rounded-full bg-interactive-accent flex items-center justify-center text-interactive-primary font-bold">
-              U
+              {user.name.charAt(0)}
             </div>
           </div>
         </div>
@@ -335,10 +409,38 @@ export default function HomePage() {
 
           {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Total Balance" value="€4,285" change="+12% from last month" changeType="positive" icon={Wallet} delay={0.1} />
-            <StatCard label="Monthly Spending" value="€2,459" change="€541 remaining" changeType="neutral" icon={TrendingUp} delay={0.2} />
-            <StatCard label="Budget Used" value="82%" change="On track" changeType="positive" icon={Target} delay={0.3} />
-            <StatCard label="Alerts" value="1" change="Transport over budget" changeType="negative" icon={AlertTriangle} delay={0.4} />
+            <StatCard 
+              label="Total Balance" 
+              value={`€${user.balance.toLocaleString()}`} 
+              change="+12% from last month" 
+              changeType="positive" 
+              icon={Wallet} 
+              delay={0.1} 
+            />
+            <StatCard 
+              label="Monthly Spending" 
+              value={`€${user.monthlySpending.toLocaleString()}`} 
+              change={`€${user.budgetRemaining} remaining`} 
+              changeType="neutral" 
+              icon={TrendingUp} 
+              delay={0.2} 
+            />
+            <StatCard 
+              label="Budget Used" 
+              value={`${budgetUsedPercent}%`} 
+              change="On track" 
+              changeType="positive" 
+              icon={Target} 
+              delay={0.3} 
+            />
+            <StatCard 
+              label="Alerts" 
+              value={alertCount.toString()} 
+              change={alertCount > 0 ? "Needs attention" : "All good"} 
+              changeType={alertCount > 0 ? "negative" : "positive"} 
+              icon={AlertTriangle} 
+              delay={0.4} 
+            />
           </div>
         </section>
 
@@ -353,24 +455,15 @@ export default function HomePage() {
             Budget Categories
           </motion.h2>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {budgetCategories.map((cat, index) => (
-              <BudgetCard key={cat.category} {...cat} delay={index * 0.1} />
+            {categories.map((category, index) => (
+              <BudgetCard 
+                key={category.id} 
+                category={category} 
+                delay={index * 0.1} 
+                onDelete={handleDeleteCategory}
+              />
             ))}
-          </div>
-        </section>
-
-        {/* Paycheck Splitter */}
-        <section>
-          <motion.h2 
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-2xl font-semibold text-content-primary mb-6"
-          >
-            Configure Your Paycheck Split
-          </motion.h2>
-          <div className="max-w-2xl">
-            <PaycheckSplitter paycheckAmount={3000} />
+            <AddCategoryCard delay={categories.length * 0.1} onAdd={handleAddCategory} />
           </div>
         </section>
 
@@ -385,17 +478,36 @@ export default function HomePage() {
             Recent Alerts
           </motion.h2>
           <div className="space-y-3 max-w-2xl">
-            {alerts.map((alert, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+            <AnimatePresence>
+              {visibleAlerts.map((alert, index) => (
+                <motion.div
+                  key={alert.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <AlertCard alert={alert} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            
+            {/* See More Button */}
+            {hasMoreAlerts && (
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                onClick={() => setShowAllAlerts(!showAllAlerts)}
+                className="w-full py-3 px-4 rounded-xl border border-border-neutral 
+                  hover:bg-bg-neutral hover:border-interactive-primary
+                  text-content-secondary hover:text-interactive-primary
+                  font-medium text-sm transition-all duration-200
+                  flex items-center justify-center gap-2"
               >
-                <AlertCard {...alert} />
-              </motion.div>
-            ))}
+                <span>{showAllAlerts ? 'Show Less' : `See More (${alerts.length - 2})`}</span>
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showAllAlerts ? 'rotate-180' : ''}`} />
+              </motion.button>
+            )}
           </div>
         </section>
 
@@ -410,4 +522,3 @@ export default function HomePage() {
     </div>
   )
 }
-

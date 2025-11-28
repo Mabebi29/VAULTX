@@ -1,0 +1,83 @@
+{
+  "categories": [
+    {
+      "id": "groceries",
+      "name": "Groceries",
+      "icon": "ShoppingCart",
+      "allocated": 450,
+      "spent": 380,
+      "color": "#2F5711"
+    },
+    {
+      "id": "rent",
+      "name": "Rent",
+      "icon": "Home",
+      "allocated": 1200,
+      "spent": 1200,
+      "color": "#163300"
+    },
+    {
+      "id": "transport",
+      "name": "Transport",
+      "icon": "Car",
+      "allocated": 200,
+      "spent": 245,
+      "color": "#A8200D"
+    },
+    {
+      "id": "dining",
+      "name": "Dining Out",
+      "icon": "Utensils",
+      "allocated": 150,
+      "spent": 89,
+      "color": "#163300"
+    },
+    {
+      "id": "entertainment",
+      "name": "Entertainment",
+      "icon": "Gamepad2",
+      "allocated": 100,
+      "spent": 45,
+      "color": "#163300"
+    },
+    {
+      "id": "savings",
+      "name": "Savings",
+      "icon": "PiggyBank",
+      "allocated": 500,
+      "spent": 500,
+      "color": "#2F5711"
+    }
+  ],
+  "alerts": [
+    {
+      "id": "1",
+      "type": "danger",
+      "title": "Transport budget exceeded",
+      "message": "You've spent €45 more than your allocated transport budget.",
+      "time": "2h ago"
+    },
+    {
+      "id": "2",
+      "type": "success",
+      "title": "Savings goal reached",
+      "message": "Your monthly savings target of €500 has been met!",
+      "time": "1d ago"
+    },
+    {
+      "id": "3",
+      "type": "info",
+      "title": "Paycheck received",
+      "message": "Your salary of €3,000 has been split into your budget categories.",
+      "time": "3d ago"
+    }
+  ],
+  "user": {
+    "name": "User",
+    "balance": 4285,
+    "monthlySpending": 2459,
+    "budgetRemaining": 541,
+    "paycheckAmount": 3000
+  }
+}
+
