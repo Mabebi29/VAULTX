@@ -112,9 +112,16 @@ function StatCard({
       className="card-elevated p-6"
     >
       <div className="flex items-center justify-between mb-4">
-        <span className="text-content-secondary text-sm">{label}</span>
-        <div className="w-10 h-10 rounded-xl bg-bg-neutral flex items-center justify-center">
-          <Icon className="w-5 h-5 text-interactive-primary" />
+        <span className="text-content-secondary" style={{
+          fontFamily: "'Inter', system-ui, sans-serif",
+          fontWeight: 600,
+          fontSize: '18px',
+          lineHeight: '24px',
+          letterSpacing: '-0.01em',
+          marginBottom: '8px'
+        }}>{label}</span>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#9FE870' }}>
+          <Icon className="w-5 h-5" style={{ color: '#163300' }} />
         </div>
       </div>
       <p className="text-2xl font-semibold text-content-primary mb-1">{value}</p>
@@ -171,9 +178,16 @@ function EditableAllowanceCard({
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <span className="text-content-secondary text-sm">Monthly Allowance</span>
-        <div className="w-10 h-10 rounded-xl bg-bg-neutral flex items-center justify-center">
-          <Wallet className="w-5 h-5 text-interactive-primary" />
+        <span className="text-content-secondary" style={{
+          fontFamily: "'Inter', system-ui, sans-serif",
+          fontWeight: 600,
+          fontSize: '18px',
+          lineHeight: '24px',
+          letterSpacing: '-0.01em',
+          marginBottom: '8px'
+        }}>Monthly Allowance</span>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#9FE870' }}>
+          <Wallet className="w-5 h-5" style={{ color: '#163300' }} />
         </div>
       </div>
 
@@ -201,7 +215,8 @@ function EditableAllowanceCard({
             </button>
             <button
               onClick={handleCancel}
-              className="flex-1 py-2 px-3 rounded-full font-medium text-sm border border-border-neutral"
+              className="flex-1 py-2 px-3 rounded-full font-medium text-sm"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Cancel
             </button>
@@ -345,7 +360,7 @@ function BudgetCard({
               onClick={handleDelete}
               disabled={pending}
               className="flex-1 py-2 px-3 rounded-full font-semibold text-sm transition-colors disabled:opacity-50"
-              style={{ backgroundColor: '#A8200D', color: '#FFFFFF' }}
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Delete
             </button>
@@ -413,11 +428,12 @@ function BudgetCard({
                     disabled={isDisabled}
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                       isSelected
-                        ? 'bg-interactive-primary text-white'
+                        ? 'text-[#163300]'
                         : isDisabled
                         ? 'bg-bg-neutral text-content-tertiary opacity-50 cursor-not-allowed'
                         : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
                     }`}
+                    style={isSelected ? { backgroundColor: '#9FE870' } : {}}
                     title={isDisabled ? 'Already assigned to another budget category' : ''}
                   >
                     {cat.label}
@@ -437,7 +453,8 @@ function BudgetCard({
             </button>
             <button
               onClick={handleCancelEdit}
-              className="flex-1 py-2 px-3 rounded-full font-medium text-sm border border-border-neutral"
+              className="flex-1 py-2 px-3 rounded-full font-medium text-sm"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Cancel
             </button>
@@ -464,7 +481,14 @@ function BudgetCard({
         </div>
       </div>
 
-      <h3 className="font-semibold text-content-primary mb-1">{category.name}</h3>
+      <h3 className="text-content-primary" style={{
+        fontFamily: "'Inter', system-ui, sans-serif",
+        fontWeight: 600,
+        fontSize: '18px',
+        lineHeight: '24px',
+        letterSpacing: '-0.01em',
+        marginBottom: '8px'
+      }}>{category.name}</h3>
       
       {category.spendingCategories && category.spendingCategories.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
@@ -649,11 +673,12 @@ function AddCategoryCard({
                     disabled={isDisabled}
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                       isSelected
-                        ? 'bg-interactive-primary text-white'
+                        ? 'text-[#163300]'
                         : isDisabled
                         ? 'bg-bg-neutral text-content-tertiary opacity-50 cursor-not-allowed'
                         : 'bg-bg-neutral text-content-secondary hover:bg-interactive-accent/20'
                     }`}
+                    style={isSelected ? { backgroundColor: '#9FE870' } : {}}
                     title={isDisabled ? 'Already assigned to another budget category' : ''}
                   >
                     {cat.label}
@@ -676,8 +701,8 @@ function AddCategoryCard({
             <button
               type="button"
               onClick={handleCancel}
-              className="flex-1 py-2.5 px-4 rounded-full border border-border-neutral 
-                text-content-primary font-medium text-sm hover:bg-bg-neutral transition-colors"
+              className="flex-1 py-2.5 px-4 rounded-full font-medium text-sm transition-colors"
+              style={{ backgroundColor: '#9FE870', color: '#163300' }}
             >
               Cancel
             </button>
@@ -858,8 +883,26 @@ export default function HomePage() {
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-16">
         <section>
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-            <h1 className="text-3xl font-semibold mb-2 text-[#163300]">Good morning! 👋</h1>
-            <p className="text-content-secondary">Here&apos;s your financial overview for this month.</p>
+            <h1 className="mb-2" style={{
+              fontFamily: "'Wise Sans', 'Inter', system-ui, sans-serif",
+              fontWeight: 700,
+              fontSize: '40px',
+              lineHeight: '0.85',
+              letterSpacing: '0.6px',
+              textTransform: 'uppercase',
+              color: '#163300',
+              fontStyle: 'normal',
+              margin: 0,
+              padding: 0
+            }}>Good evening!</h1>
+            <p className="text-content-secondary" style={{
+              fontFamily: "'Inter', system-ui, sans-serif",
+              fontWeight: 600,
+              fontSize: '22px',
+              lineHeight: '28px',
+              letterSpacing: '-0.015em',
+              marginBottom: '8px'
+            }}>Here&apos;s your financial overview for this month.</p>
           </motion.div>
 
           {error && (
@@ -892,18 +935,40 @@ export default function HomePage() {
         </section>
 
         <section>
-          <motion.h2
+          <motion.h2 
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="text-2xl font-semibold text-content-primary mb-6"
+            className="text-content-primary"
+            style={{
+              fontFamily: "'Inter', system-ui, sans-serif",
+              fontWeight: 600,
+              fontSize: '22px',
+              lineHeight: '28px',
+              letterSpacing: '-0.015em',
+              marginBottom: '8px'
+            }}
           >
             Budget Categories
           </motion.h2>
           <div className="grid grid-cols-1 gap-4">
             <div className="flex items-center justify-between px-1 mb-2">
-              <span className="text-sm text-content-secondary">Total allocated: {totalUsedPercent.toFixed(0)}%</span>
-              <span className="text-sm text-content-secondary">{availablePercent.toFixed(0)}% go to savings</span>
+              <span className="text-content-secondary" style={{
+                fontFamily: "'Inter', system-ui, sans-serif",
+                fontWeight: 400,
+                fontSize: '14px',
+                lineHeight: '22px',
+                letterSpacing: '0.01em',
+                marginBottom: '8px'
+              }}>Total allocated: {totalUsedPercent.toFixed(0)}%</span>
+              <span className="text-content-secondary" style={{
+                fontFamily: "'Inter', system-ui, sans-serif",
+                fontWeight: 400,
+                fontSize: '14px',
+                lineHeight: '22px',
+                letterSpacing: '0.01em',
+                marginBottom: '8px'
+              }}>{availablePercent.toFixed(0)}% go to savings</span>
             </div>
             {categories.map((category, index) => (
               <BudgetCard
@@ -958,11 +1023,9 @@ export default function HomePage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={() => setShowAllAlerts(!showAllAlerts)}
-                className="w-full py-3 px-4 rounded-xl border border-border-neutral 
-                  hover:bg-bg-neutral hover:border-interactive-primary
-                  text-content-secondary hover:text-interactive-primary
-                  font-medium text-sm transition-all duration-200
+                className="w-full py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200
                   flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#9FE870', color: '#163300' }}
               >
                 <span>{showAllAlerts ? 'Show Less' : `See More (${alerts.length - 2})`}</span>
                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showAllAlerts ? 'rotate-180' : ''}`} />
