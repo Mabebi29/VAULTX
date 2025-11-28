@@ -373,11 +373,13 @@ export default function HomePage() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-border-neutral">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-interactive-accent flex items-center justify-center">
-              <Wallet className="w-6 h-6 text-interactive-primary" />
-            </div>
-            <span className="font-semibold text-xl text-content-primary">VaultX</span>
+          <div className="flex items-center">
+            {/* Wise Logo */}
+            <img 
+              src="/wise-logo.svg" 
+              alt="Wise" 
+              className="h-5"
+            />
           </div>
           <div className="flex items-center gap-3">
             <button className="p-2 rounded-full bg-bg-neutral hover:bg-interactive-accent/20 transition-colors">
@@ -399,7 +401,7 @@ export default function HomePage() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
-            <h1 className="text-3xl font-semibold text-content-primary mb-2">
+            <h1 className="text-3xl font-semibold mb-2 text-[#163300]">
               Good morning! 👋
             </h1>
             <p className="text-content-secondary">
